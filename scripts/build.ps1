@@ -1,6 +1,8 @@
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$repositoryFullName = "theneutral0ne/true-aim"
+$branchName = "main"
 $segmentPaths = @(
     "src/shared/00_bootstrap.lua",
     "src/games/00_registry.lua",
@@ -16,6 +18,11 @@ $segmentPaths = @(
 
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $builder = New-Object System.Text.StringBuilder
+$distDirectoryPath = Join-Path $repoRoot "dist"
+$bundleOutputPath = Join-Path $distDirectoryPath "true-aim.bundle.lua"
+$launcherOutputPath = Join-Path $repoRoot "true-aim.lua"
+
+New-Item -ItemType Directory -Force -Path $distDirectoryPath | Out-Null
 
 foreach ($relativePath in $segmentPaths) {
     $absolutePath = Join-Path $repoRoot $relativePath
@@ -26,7 +33,44 @@ foreach ($relativePath in $segmentPaths) {
     [void]$builder.Append([System.IO.File]::ReadAllText($absolutePath))
 }
 
-$outputPath = Join-Path $repoRoot "bloodzone_aimbot.lua"
-[System.IO.File]::WriteAllText($outputPath, $builder.ToString(), $utf8NoBom)
+[System.IO.File]::WriteAllText($bundleOutputPath, $builder.ToString(), $utf8NoBom)
 
-Write-Host ("Built {0} from {1} source segments." -f $outputPath, $segmentPaths.Count)
+$quotedSegmentPaths = $segmentPaths | ForEach-Object { '    "' + ($_ -replace "\\", "/") + '"' }
+$launcherSource = @"
+local LoadStringFunction = loadstring or load
+if type(LoadStringFunction) ~= "function" then
+	error("true-aim: loadstring is unavailable in this environment", 0)
+end
+
+local RepositoryFullNameString = "$repositoryFullName"
+local BranchNameString = "$branchName"
+local ModulePathsTable = {
+__MODULE_PATHS__
+}
+
+local SourceChunksTable = {}
+local CacheBustString = tostring(os.clock()):gsub("%.", "")
+for IndexNumber, RelativePathString in ipairs(ModulePathsTable) do
+	local RawUrlString = ("https://raw.githubusercontent.com/%s/%s/%s"):format(
+		RepositoryFullNameString,
+		BranchNameString,
+		RelativePathString
+	)
+	local SuccessBoolean, ResultValue = pcall(game.HttpGet, game, RawUrlString .. "?v=" .. CacheBustString)
+	if not SuccessBoolean then
+		error(("true-aim: failed to fetch %s (%s)"):format(RelativePathString, tostring(ResultValue)), 0)
+	end
+	SourceChunksTable[IndexNumber] = ResultValue
+end
+
+local ChunkFunction, CompileErrorString = LoadStringFunction(table.concat(SourceChunksTable, "\n"))
+if type(ChunkFunction) ~= "function" then
+	error(("true-aim: failed to compile remote source (%s)"):format(tostring(CompileErrorString)), 0)
+end
+
+return ChunkFunction()
+"@
+$launcherSource = $launcherSource.Replace("__MODULE_PATHS__", ($quotedSegmentPaths -join ",`n"))
+[System.IO.File]::WriteAllText($launcherOutputPath, $launcherSource, $utf8NoBom)
+
+Write-Host ("Built {0} and {1} from {2} source segments." -f $bundleOutputPath, $launcherOutputPath, $segmentPaths.Count)

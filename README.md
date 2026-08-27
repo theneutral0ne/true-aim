@@ -1,9 +1,17 @@
 # true-aim
 
-The runnable script stays at `bloodzone_aimbot.lua`, but the source is now organized as shared code plus per-game feature modules.
+The main entrypoint is `true-aim.lua`, which is meant to be executed through a remote loadstring. The repo source is organized as shared code plus per-game feature modules, and the build also emits a bundled local artifact at `dist/true-aim.bundle.lua`.
+
+Loadstring entry:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/theneutral0ne/true-aim/main/true-aim.lua"))()
+```
 
 Current layout:
 
+- `true-aim.lua`
+- `dist/true-aim.bundle.lua`
 - `src/shared/`
 - `src/games/00_registry.lua`
 - `src/games/bloodzone/`
@@ -13,9 +21,9 @@ Workflow:
 1. Put generic aimbot behavior in `src/shared/`.
 2. Put game-specific behavior in `src/games/<game>/`.
 3. Update `src/games/00_registry.lua` when a new place should enable a game module.
-4. Edit the source files instead of editing `bloodzone_aimbot.lua` directly.
+4. Edit the source files instead of editing `true-aim.lua` or `dist/true-aim.bundle.lua` directly.
 5. Run `powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1`.
-6. Use the rebuilt `bloodzone_aimbot.lua` as the single-file output.
+6. Push the rebuilt `true-aim.lua`, `dist/true-aim.bundle.lua`, and source files to GitHub.
 
 Current build order:
 
@@ -35,5 +43,7 @@ Why this layout:
 - `src/shared/` is the base legit/core path that should work anywhere.
 - `src/games/<game>/` is where special weapon logic, threat logic, hooks, and other game-specific behavior belongs.
 - New games can be added without stuffing more `if placeId` branches into the shared files.
+- `true-aim.lua` is the GitHub launcher that fetches the module source files and loadstrings them as one runtime chunk.
+- `dist/true-aim.bundle.lua` is the locally built single-file artifact for inspection or offline use.
 
 This is the first game-module pass. The next cleanup step is moving the remaining Blood Zone-only UI and targeting branches out of shared files and into `src/games/bloodzone/`.
