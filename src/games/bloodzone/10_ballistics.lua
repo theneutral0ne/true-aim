@@ -1280,25 +1280,17 @@ local function BuildSkyAimCandidateFacingDirection(BaseFlatDirectionVector3, Yaw
 	return RotatedFlatDirectionVector3
 end
 
-local function BuildSkyAimCandidateDirection(OriginVector3, TargetPositionVector3, PitchSineNumber, PitchCosineNumber, FallbackFlatDirectionVector3)
-	local FlatDirectionVector3 = nil
-	if typeof(OriginVector3) == "Vector3" and typeof(TargetPositionVector3) == "Vector3" then
-		FlatDirectionVector3 = Vector3.new(
-			TargetPositionVector3.X - OriginVector3.X,
-			0,
-			TargetPositionVector3.Z - OriginVector3.Z
-		)
-	end
-	if typeof(FlatDirectionVector3) ~= "Vector3" or FlatDirectionVector3.Magnitude <= 0.001 then
-		FlatDirectionVector3 = Vector3.new(FallbackFlatDirectionVector3.X, 0, FallbackFlatDirectionVector3.Z)
-	end
-	if FlatDirectionVector3.Magnitude <= 0.001 then
-		FlatDirectionVector3 = Vector3.new(0, 0, -1)
+local function BuildSkyAimCandidateDirection(FlatFacingDirectionVector3, PitchSineNumber, PitchCosineNumber)
+	local CandidateFlatDirectionVector3 = typeof(FlatFacingDirectionVector3) == "Vector3"
+		and Vector3.new(FlatFacingDirectionVector3.X, 0, FlatFacingDirectionVector3.Z)
+		or nil
+	if typeof(CandidateFlatDirectionVector3) ~= "Vector3" or CandidateFlatDirectionVector3.Magnitude <= 0.001 then
+		CandidateFlatDirectionVector3 = Vector3.new(0, 0, -1)
 	else
-		FlatDirectionVector3 = FlatDirectionVector3.Unit
+		CandidateFlatDirectionVector3 = CandidateFlatDirectionVector3.Unit
 	end
 
-	local CandidateDirectionVector3 = FlatDirectionVector3 * PitchCosineNumber + Vector3.new(0, PitchSineNumber, 0)
+	local CandidateDirectionVector3 = CandidateFlatDirectionVector3 * PitchCosineNumber + Vector3.new(0, PitchSineNumber, 0)
 	if CandidateDirectionVector3.Magnitude <= 0.001 then
 		return nil
 	end
@@ -1466,6 +1458,7 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 			facingDirection = FlatFacingDirectionVector3,
 			missDistance = MissDistanceNumber,
 			upward = CandidateDirectionVector3.Y,
+			yaw = YawDegreeNumber,
 			yawAbs = AbsoluteYawNumber,
 			pitch = PitchDegreeNumber,
 			priority = 0,
@@ -1551,11 +1544,9 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 				CandidateFacingDirectionVector3
 			)
 			local CandidateDirectionVector3 = BuildSkyAimCandidateDirection(
-				CandidateMuzzleOriginVector3,
-				TargetPositionVector3,
+				CandidateFacingDirectionVector3,
 				PitchGroupTable.sinPitch,
-				PitchGroupTable.cosPitch,
-				CandidateFacingDirectionVector3
+				PitchGroupTable.cosPitch
 			)
 			if CandidateDirectionVector3 then
 				if ConsiderCandidate(
@@ -1598,6 +1589,19 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 		else
 			FinalSolutionTable = FallbackSolutionTable
 		end
+	end
+
+	if FinalSolutionTable then
+		TraceLog(
+			"sky-aim-final",
+			"pitch=" .. tostring(FinalSolutionTable.pitch)
+				.. " | yaw=" .. tostring(FinalSolutionTable.yaw or 0)
+				.. " | priority=" .. tostring(FinalSolutionTable.priority)
+				.. " | miss=" .. string.format("%.2f", FinalSolutionTable.missDistance or -1)
+				.. " | facing=" .. FormatDebugVector3(FinalSolutionTable.facingDirection)
+				.. " | dir=" .. FormatDebugVector3(FinalSolutionTable.direction),
+			false
+		)
 	end
 
 	if not SkipCacheBoolean then
