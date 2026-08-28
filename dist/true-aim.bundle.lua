@@ -102,9 +102,10 @@ VisibleCheckSubdivisionsNumber = 4
 TargetSegmentationEnabledBoolean = false
 SkyAimHitDistanceNumber = 4096
 SkyAimSolutionCacheDurationNumber = 0.05
-SkyAimSamplePitchDegreesTable = { 88, 76, 64, 52, 40, 28, 16 }
+SkyAimPreferredPitchDegreesNumber = 45
+SkyAimSamplePitchDegreesTable = { 88, 76, 64, 52, 45, 40, 28, 16 }
 SkyAimSampleYawOffsetDegreesTable = { 0, 15, -15, 30, -30, 45, -45, 60, -60, 90, -90, 180 }
-SkyAimVisibilitySamplePitchDegreesTable = { 88, 70, 52, 34, 18 }
+SkyAimVisibilitySamplePitchDegreesTable = { 88, 70, 52, 45, 34, 18 }
 SkyAimVisibilitySampleYawOffsetDegreesTable = { 0, 30, -30, 60, -60, 90, -90, 180 }
 
 ShowFovCircleBoolean = true
@@ -3408,6 +3409,7 @@ function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, E
 		end
 
 		local AbsoluteYawNumber = math.abs(YawDegreeNumber)
+		local PitchDistanceNumber = math.abs(PitchDegreeNumber - SkyAimPreferredPitchDegreesNumber)
 		local CandidateSolutionTable = {
 			direction = CandidateDirectionVector3,
 			muzzleOrigin = CandidateMuzzleOriginVector3,
@@ -3419,12 +3421,16 @@ function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, E
 			yaw = YawDegreeNumber,
 			yawAbs = AbsoluteYawNumber,
 			pitch = PitchDegreeNumber,
+			pitchDistance = PitchDistanceNumber,
 			priority = 0,
 		}
 
 		if not BestApproximateSolutionTable
 			or MissDistanceNumber < (BestApproximateSolutionTable.missDistance - 0.01)
 			or (math.abs(MissDistanceNumber - BestApproximateSolutionTable.missDistance) <= 0.01
+				and PitchDistanceNumber < ((BestApproximateSolutionTable.pitchDistance or math.huge) - 0.01))
+			or (math.abs(MissDistanceNumber - BestApproximateSolutionTable.missDistance) <= 0.01
+				and math.abs(PitchDistanceNumber - (BestApproximateSolutionTable.pitchDistance or math.huge)) <= 0.01
 				and CandidateDirectionVector3.Y > (BestApproximateSolutionTable.upward or -math.huge)) then
 			BestApproximateSolutionTable = CandidateSolutionTable
 		end
@@ -3471,11 +3477,16 @@ function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, E
 		if not BestSolutionTable
 			or CandidateSolutionTable.priority > (BestSolutionTable.priority or -math.huge)
 			or (CandidateSolutionTable.priority == BestSolutionTable.priority
+				and PitchDistanceNumber < ((BestSolutionTable.pitchDistance or math.huge) - 0.01))
+			or (CandidateSolutionTable.priority == BestSolutionTable.priority
+				and math.abs(PitchDistanceNumber - (BestSolutionTable.pitchDistance or math.huge)) <= 0.01
 				and CandidateDirectionVector3.Y > ((BestSolutionTable.upward or -math.huge) + 0.001))
 			or (CandidateSolutionTable.priority == BestSolutionTable.priority
+				and math.abs(PitchDistanceNumber - (BestSolutionTable.pitchDistance or math.huge)) <= 0.01
 				and math.abs(CandidateDirectionVector3.Y - (BestSolutionTable.upward or -math.huge)) <= 0.001
 				and MissDistanceNumber < ((BestSolutionTable.missDistance or math.huge) - 0.01))
 			or (CandidateSolutionTable.priority == BestSolutionTable.priority
+				and math.abs(PitchDistanceNumber - (BestSolutionTable.pitchDistance or math.huge)) <= 0.01
 				and math.abs(CandidateDirectionVector3.Y - (BestSolutionTable.upward or -math.huge)) <= 0.001
 				and math.abs(MissDistanceNumber - (BestSolutionTable.missDistance or math.huge)) <= 0.01
 				and AbsoluteYawNumber < (BestSolutionTable.yawAbs or math.huge)) then
