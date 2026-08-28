@@ -1,5 +1,3 @@
--- true-aim source: single-file runtime
--- source order: shared bootstrap, game registry, runtime state, Blood Zone modules, shared runtime
 
 local RunService = game.GetService(game, "RunService")
 local Players = game.GetService(game, "Players")
@@ -136,7 +134,6 @@ ObservedCharacterVelocitySampleByModelTable = setmetatable({}, { __mode = "k" })
 
 
 local GameIntegrationProfilesByPlaceIdTable = {
-	-- Keep game-specific behavior place-bound so future integrations can opt in cleanly.
 	[13955927965] = {
 		id = "bloodzone",
 		usesCustomCharacters = true,
@@ -848,7 +845,6 @@ local function ShouldApplyNormalHookHitChance()
 	end
 
 	local NowNumber = tick()
-	-- Keep multiple internal raycasts from the same shot on the same roll.
 	if (NowNumber - LastNormalHookHitChanceDecisionTimeNumber) <= NormalHookHitChanceDecisionWindowNumber then
 		return LastNormalHookHitChanceDecisionBoolean
 	end
@@ -2286,8 +2282,6 @@ function ShieldModeRuntimeTable.GetShotgunRedirectDistance(ProfileTable, OriginV
 		return OriginalDistanceNumber
 	end
 
-	-- Blood Zone's shotgun client ray is capped at Settings.Distance (150 for
-	-- Pump Shotgun). Let the redirected ray reach the selected target instead.
 	return math.max(OriginalDistanceNumber, TargetDistanceNumber + 6)
 end
 
@@ -3391,8 +3385,6 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 			return
 		end
 
-		-- The pitch/yaw candidate is the simulated weapon pose. Reachability still
-		-- follows the real muzzle-to-target line because the hook redirects that line.
 		local CandidateTargetDirectionVector3 = CandidateTargetOffsetVector3.Unit
 		local CandidateHeadTargetDirectionVector3 = CandidateHeadTargetOffsetVector3.Unit
 		local MuzzleMissDistanceNumber, MuzzleAlongNumber = GetPointToRayDistance(
@@ -3500,7 +3492,6 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 			elseif CandidateYawChangeNumber > (BestYawChangeNumber + 0.01) then
 				return false
 			end
-			-- Equal yaw stays eligible for the normal pitch comparison below.
 		end
 
 		local CandidateDirectHitBoolean = CandidateSolutionTable.priority >= 3
@@ -3896,7 +3887,6 @@ local function ResolveShotSkyAimDataTable(LocalCharacterModel, ReferenceDirectio
 	return FinalizeShotSkyAimData({
 		direction = SkyAimSolutionTable.direction,
 		facingDirection = FacingDirectionVector3,
-		-- Keep fallback poses from replacing the cursor with an upward point.
 		hitPosition = (SkyAimSolutionTable.priority or -1) >= 3 and SkyAimSolutionTable.hitPosition or nil,
 		priority = SkyAimSolutionTable.priority,
 	})
@@ -4841,8 +4831,6 @@ function ShieldModeRuntimeTable.EnsureLocalCharacterHooks()
 					false
 				)
 			end
-			-- Do not call the original look update here. In first person it restores
-			-- AutoRotate, which immediately undoes the forced shield-facing rotation.
 			return
 		end
 
@@ -4860,9 +4848,6 @@ function ShieldModeRuntimeTable.EnsureLocalCharacterHooks()
 				SelfTable.Rotate3rdPersonTime = math.max(SelfTable.Rotate3rdPersonTime, 0.2)
 			end
 			if AppliedShotSkyFacingOverrideBoolean then
-				-- ApplyBodyFacingOverride owns the root rotation while sky aim is
-				-- active. Calling the game's UpdateLook afterward restores its
-				-- private camera rotation and causes side-angle oscillation.
 				return
 			end
 		end
@@ -8016,7 +8001,6 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 					FinalTargetCubeCFrame = CandidateData.cubeCFrame
 					FinalTargetCubeSize = CandidateData.cubeSize
 				elseif CurrentTargetIsAimingThreatBoolean and not CandidateData.isAimingThreat then
-					-- Keep the current threat target while no stronger threat candidate replaces it.
 				elseif CandidatePriorityBoolean and not CurrentPriorityBoolean then
 					FinalTargetPartInstance = CandidateData.part
 					FinalTargetCharacterModel = CandidateData.character
