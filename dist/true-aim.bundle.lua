@@ -102,6 +102,7 @@ VisibleCheckSubdivisionsNumber = 4
 TargetSegmentationEnabledBoolean = false
 SkyAimHitDistanceNumber = 4096
 SkyAimSolutionCacheDurationNumber = 0.05
+SkyAimCandidateLockDurationNumber = 0.3
 SkyAimPreferredPitchDegreesNumber = 45
 SkyAimSamplePitchDegreesTable = { 88, 76, 64, 52, 45, 40, 28, 16 }
 SkyAimSampleYawOffsetDegreesTable = { 0, 15, -15, 30, -30, 45, -45, 60, -60, 90, -90, 180 }
@@ -3370,6 +3371,22 @@ function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, E
 	local AlignmentToleranceNumber = GetSkyAimAlignmentTolerance(TargetPartInstance)
 	local BestSolutionTable = nil
 	local BestApproximateSolutionTable = nil
+	local PreviousCandidateSolutionTable = nil
+	local PreviousSkyAimCacheTable = ShieldModeRuntimeTable.skyAimSolutionCache
+	local PreviousSkyAimSolutionTable = PreviousSkyAimCacheTable and PreviousSkyAimCacheTable.solution or nil
+	local CandidateLockDurationNumber = math.max(tonumber(SkyAimCandidateLockDurationNumber) or 0, 0)
+	if PreviousSkyAimSolutionTable
+		and not PreviousSkyAimSolutionTable.isFallback
+		and type(PreviousSkyAimSolutionTable.yaw) == "number"
+		and type(PreviousSkyAimSolutionTable.pitch) == "number"
+		and CandidateLockDurationNumber > 0
+		and (tick() - (PreviousSkyAimCacheTable.time or 0)) < CandidateLockDurationNumber
+		and PreviousSkyAimCacheTable.localCharacter == LocalCharacterModel
+		and PreviousSkyAimCacheTable.targetCharacter == TargetCharacterModel
+		and PreviousSkyAimCacheTable.targetPart == TargetPartInstance
+		and PreviousSkyAimCacheTable.equippedTool == EquippedTool then
+		PreviousCandidateSolutionTable = PreviousSkyAimSolutionTable
+	end
 
 	if RequiredPriorityNumber and RequiredPriorityNumber >= 3 and (not CurrentLocalGunRaycastParamsObject or TargetDistanceNumber <= 0.001) then
 		return nil
@@ -3474,6 +3491,22 @@ function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, E
 			CandidateSolutionTable.priority = 2
 		elseif MissDistanceNumber <= AlignmentToleranceNumber then
 			CandidateSolutionTable.priority = 1
+		end
+
+		local KeepPreviousDirectCandidateBoolean = PreviousCandidateSolutionTable
+			and BestSolutionTable
+			and (PreviousCandidateSolutionTable.priority or 0) >= 3
+			and CandidateSolutionTable.priority >= 3
+			and BestSolutionTable.priority >= 3
+		if KeepPreviousDirectCandidateBoolean then
+			local CandidateRotationChangeNumber = math.abs(CandidateSolutionTable.yaw - PreviousCandidateSolutionTable.yaw)
+				+ math.abs(CandidateSolutionTable.pitch - PreviousCandidateSolutionTable.pitch)
+			local BestRotationChangeNumber = math.abs(BestSolutionTable.yaw - PreviousCandidateSolutionTable.yaw)
+				+ math.abs(BestSolutionTable.pitch - PreviousCandidateSolutionTable.pitch)
+			if CandidateRotationChangeNumber < (BestRotationChangeNumber - 0.01) then
+				BestSolutionTable = CandidateSolutionTable
+			end
+			return false
 		end
 
 		if not BestSolutionTable
@@ -3588,6 +3621,7 @@ function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, E
 			targetPosition = TargetPositionVector3,
 			muzzleOrigin = MuzzleOriginVector3,
 			headPosition = HeadPositionVector3,
+			equippedTool = EquippedTool,
 			solution = FinalSolutionTable,
 		}
 	end

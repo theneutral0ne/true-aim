@@ -88,6 +88,7 @@ VisibleCheckSubdivisionsNumber = 4
 TargetSegmentationEnabledBoolean = false
 SkyAimHitDistanceNumber = 4096
 SkyAimSolutionCacheDurationNumber = 0.05
+SkyAimCandidateLockDurationNumber = 0.3
 SkyAimPreferredPitchDegreesNumber = 45
 SkyAimSamplePitchDegreesTable = { 88, 76, 64, 52, 45, 40, 28, 16 }
 SkyAimSampleYawOffsetDegreesTable = { 0, 15, -15, 30, -30, 45, -45, 60, -60, 90, -90, 180 }
