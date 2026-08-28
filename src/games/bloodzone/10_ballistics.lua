@@ -1584,7 +1584,9 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 		end
 
 		local AbsoluteYawNumber = math.abs(YawDegreeNumber)
-		local PitchDistanceNumber = math.abs(PitchDegreeNumber - SkyAimPreferredPitchDegreesNumber)
+		local PitchDistanceNumber = AbsoluteYawNumber > 0.001
+			and math.abs(PitchDegreeNumber)
+			or math.abs(PitchDegreeNumber - SkyAimPreferredPitchDegreesNumber)
 		local CandidateSolutionTable = {
 			direction = CandidateDirectionVector3,
 			targetDirection = CandidateTargetDirectionVector3,
@@ -1666,22 +1668,31 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 			return false
 		end
 
-		if not BestSolutionTable
-			or CandidateSolutionTable.priority > (BestSolutionTable.priority or -math.huge)
-			or (CandidateSolutionTable.priority == BestSolutionTable.priority
-				and PitchDistanceNumber < ((BestSolutionTable.pitchDistance or math.huge) - 0.01))
-			or (CandidateSolutionTable.priority == BestSolutionTable.priority
-				and math.abs(PitchDistanceNumber - (BestSolutionTable.pitchDistance or math.huge)) <= 0.01
-				and CandidateDirectionVector3.Y > ((BestSolutionTable.upward or -math.huge) + 0.001))
-			or (CandidateSolutionTable.priority == BestSolutionTable.priority
-				and math.abs(PitchDistanceNumber - (BestSolutionTable.pitchDistance or math.huge)) <= 0.01
+		local CandidateDirectHitBoolean = CandidateSolutionTable.priority >= 3
+		local BestDirectHitBoolean = BestSolutionTable and (BestSolutionTable.priority or 0) >= 3
+		local ShouldReplaceBestBoolean = not BestSolutionTable
+		if not ShouldReplaceBestBoolean then
+			if CandidateDirectHitBoolean ~= BestDirectHitBoolean then
+				ShouldReplaceBestBoolean = CandidateDirectHitBoolean
+			elseif not CandidateDirectHitBoolean and CandidateSolutionTable.priority ~= BestSolutionTable.priority then
+				ShouldReplaceBestBoolean = CandidateSolutionTable.priority > BestSolutionTable.priority
+			elseif PitchDistanceNumber < ((BestSolutionTable.pitchDistance or math.huge) - 0.01) then
+				ShouldReplaceBestBoolean = true
+			elseif math.abs(PitchDistanceNumber - (BestSolutionTable.pitchDistance or math.huge)) <= 0.01
+				and CandidateDirectionVector3.Y > ((BestSolutionTable.upward or -math.huge) + 0.001) then
+				ShouldReplaceBestBoolean = true
+			elseif math.abs(PitchDistanceNumber - (BestSolutionTable.pitchDistance or math.huge)) <= 0.01
 				and math.abs(CandidateDirectionVector3.Y - (BestSolutionTable.upward or -math.huge)) <= 0.001
-				and MissDistanceNumber < ((BestSolutionTable.missDistance or math.huge) - 0.01))
-			or (CandidateSolutionTable.priority == BestSolutionTable.priority
-				and math.abs(PitchDistanceNumber - (BestSolutionTable.pitchDistance or math.huge)) <= 0.01
+				and MissDistanceNumber < ((BestSolutionTable.missDistance or math.huge) - 0.01) then
+				ShouldReplaceBestBoolean = true
+			elseif math.abs(PitchDistanceNumber - (BestSolutionTable.pitchDistance or math.huge)) <= 0.01
 				and math.abs(CandidateDirectionVector3.Y - (BestSolutionTable.upward or -math.huge)) <= 0.001
 				and math.abs(MissDistanceNumber - (BestSolutionTable.missDistance or math.huge)) <= 0.01
-				and AbsoluteYawNumber < (BestSolutionTable.yawAbs or math.huge)) then
+				and AbsoluteYawNumber < (BestSolutionTable.yawAbs or math.huge) then
+				ShouldReplaceBestBoolean = true
+			end
+		end
+		if ShouldReplaceBestBoolean then
 			BestSolutionTable = CandidateSolutionTable
 		end
 
@@ -1725,7 +1736,7 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 
 		if BestSolutionTable
 			and (
-				((BestSolutionTable.priority or 0) >= 4)
+				((BestSolutionTable.priority or 0) >= 4 and (BestSolutionTable.yawAbs or 0) <= 0.001)
 				or (RequiredPriorityNumber and (BestSolutionTable.priority or 0) >= RequiredPriorityNumber)
 			) then
 			break
