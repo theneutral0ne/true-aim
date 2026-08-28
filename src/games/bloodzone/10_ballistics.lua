@@ -1458,15 +1458,16 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 				CachedSolutionCanBeReusedBoolean = false
 				local CachedMuzzleOriginVector3 = CachedSolutionValue.muzzleOrigin or CachedSolutionTable.muzzleOrigin
 				local CachedDirectionVector3 = CachedSolutionValue.direction
+				local CachedTargetDirectionVector3 = CachedSolutionValue.targetDirection or CachedDirectionVector3
 				if typeof(CachedMuzzleOriginVector3) == "Vector3"
-					and typeof(CachedDirectionVector3) == "Vector3"
-					and CachedDirectionVector3.Magnitude > 0.001 then
+					and typeof(CachedTargetDirectionVector3) == "Vector3"
+					and CachedTargetDirectionVector3.Magnitude > 0.001 then
 					if CachedPriorityNumber >= 3 and CurrentLocalGunRaycastParamsObject then
 						local CachedTargetDistanceNumber = (TargetPositionVector3 - CachedMuzzleOriginVector3).Magnitude
 						if CachedTargetDistanceNumber > 0.001 then
 							local CachedRaycastResult = RunUnredirectedWorkspaceRaycast(
 								CachedMuzzleOriginVector3,
-								CachedDirectionVector3.Unit * math.max(CachedTargetDistanceNumber + 6, 12),
+								CachedTargetDirectionVector3.Unit * math.max(CachedTargetDistanceNumber + 6, 12),
 								CurrentLocalGunRaycastParamsObject
 							)
 							CachedSolutionCanBeReusedBoolean = IsRaycastResultTargetHit(CachedRaycastResult, TargetCharacterModel)
@@ -1547,6 +1548,7 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 		local PitchDistanceNumber = math.abs(PitchDegreeNumber - SkyAimPreferredPitchDegreesNumber)
 		local CandidateSolutionTable = {
 			direction = CandidateDirectionVector3,
+			targetDirection = CandidateTargetDirectionVector3,
 			muzzleOrigin = CandidateMuzzleOriginVector3,
 			headPosition = CandidateHeadPositionVector3,
 			hitPosition = CandidateMuzzleOriginVector3 + CandidateDirectionVector3 * SkyAimHitDistanceNumber,

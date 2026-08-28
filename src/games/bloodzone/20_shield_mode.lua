@@ -1225,6 +1225,12 @@ function ShieldModeRuntimeTable.EnsureLocalCharacterHooks()
 			if type(SelfTable.Rotate3rdPersonTime) == "number" then
 				SelfTable.Rotate3rdPersonTime = math.max(SelfTable.Rotate3rdPersonTime, 0.2)
 			end
+			if AppliedShotSkyFacingOverrideBoolean then
+				-- ApplyBodyFacingOverride owns the root rotation while sky aim is
+				-- active. Calling the game's UpdateLook afterward restores its
+				-- private camera rotation and causes side-angle oscillation.
+				return
+			end
 		end
 
 		if not AppliedShotSkyFacingOverrideBoolean then
