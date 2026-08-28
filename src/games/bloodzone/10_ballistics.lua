@@ -1658,14 +1658,14 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 			and CandidateSolutionTable.priority >= 3
 			and BestSolutionTable.priority >= 3
 		if KeepPreviousDirectCandidateBoolean then
-			local CandidateRotationChangeNumber = math.abs(CandidateSolutionTable.yaw - PreviousCandidateSolutionTable.yaw)
-				+ math.abs(CandidateSolutionTable.pitch - PreviousCandidateSolutionTable.pitch)
-			local BestRotationChangeNumber = math.abs(BestSolutionTable.yaw - PreviousCandidateSolutionTable.yaw)
-				+ math.abs(BestSolutionTable.pitch - PreviousCandidateSolutionTable.pitch)
-			if CandidateRotationChangeNumber < (BestRotationChangeNumber - 0.01) then
+			local CandidateYawChangeNumber = math.abs(CandidateSolutionTable.yaw - PreviousCandidateSolutionTable.yaw)
+			local BestYawChangeNumber = math.abs(BestSolutionTable.yaw - PreviousCandidateSolutionTable.yaw)
+			if CandidateYawChangeNumber < (BestYawChangeNumber - 0.01) then
 				BestSolutionTable = CandidateSolutionTable
+			elseif CandidateYawChangeNumber > (BestYawChangeNumber + 0.01) then
+				return false
 			end
-			return false
+			-- Equal yaw stays eligible for the normal pitch comparison below.
 		end
 
 		local CandidateDirectHitBoolean = CandidateSolutionTable.priority >= 3
