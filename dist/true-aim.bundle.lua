@@ -2284,6 +2284,42 @@ function ShieldModeRuntimeTable.IsProjectileWeaponProfile(ProfileTable)
 	return type(ProfileTable) == "table" and ProfileTable.isProjectile == true
 end
 
+function ShieldModeRuntimeTable.IsShotgunWeaponProfile(ProfileTable)
+	if type(ProfileTable) ~= "table" or ProfileTable.isProjectile == true then
+		return false
+	end
+
+	local SettingsTable = ProfileTable.settings
+	local WeaponNameString = ProfileTable.weaponName
+		or (SettingsTable and SettingsTable.Name)
+		or (ProfileTable.localGun and ProfileTable.localGun.Tool and ProfileTable.localGun.Tool.Name)
+	if type(WeaponNameString) ~= "string" then
+		return false
+	end
+
+	return string.find(string.lower(WeaponNameString), "shotgun", 1, true) ~= nil
+end
+
+function ShieldModeRuntimeTable.GetShotgunRedirectDistance(ProfileTable, OriginVector3, TargetPositionVector3, OriginalDistanceNumber)
+	if not IsSillyModeBehaviorActive()
+		or not ShieldModeRuntimeTable.IsShotgunWeaponProfile(ProfileTable)
+		or typeof(OriginVector3) ~= "Vector3"
+		or typeof(TargetPositionVector3) ~= "Vector3"
+		or type(OriginalDistanceNumber) ~= "number"
+		or OriginalDistanceNumber <= 0.001 then
+		return OriginalDistanceNumber
+	end
+
+	local TargetDistanceNumber = (TargetPositionVector3 - OriginVector3).Magnitude
+	if TargetDistanceNumber <= 0.001 then
+		return OriginalDistanceNumber
+	end
+
+	-- Blood Zone's shotgun client ray is capped at Settings.Distance (150 for
+	-- Pump Shotgun). Let the redirected ray reach the selected target instead.
+	return math.max(OriginalDistanceNumber, TargetDistanceNumber + 6)
+end
+
 function ShieldModeRuntimeTable.CanPredictProjectileWeaponProfile(ProfileTable)
 	return UseProjectilePredictionBoolean
 		and ShieldModeRuntimeTable.IsProjectileWeaponProfile(ProfileTable)
@@ -3101,6 +3137,31 @@ local function GetFallbackFlatAimDirectionVector3(LocalCharacterModel, Reference
 	return Vector3.new(0, 0, -1)
 end
 
+local function BuildFallbackSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, TargetPositionVector3)
+	local HeadPartInstance = LocalCharacterModel and GetCharacterHeadPart(LocalCharacterModel) or nil
+	local RootPartInstance = LocalCharacterModel and GetCharacterRootPart(LocalCharacterModel) or nil
+	local ActiveCamera = WorkspaceService.CurrentCamera or Camera
+	local MuzzleOriginVector3 = ShieldModeRuntimeTable.GetCurrentLocalGunMuzzleOrigin
+		and ShieldModeRuntimeTable.GetCurrentLocalGunMuzzleOrigin(LocalCharacterModel) or nil
+	local HitOriginVector3 = MuzzleOriginVector3
+		or (HeadPartInstance and HeadPartInstance.Position)
+		or (RootPartInstance and RootPartInstance.Position)
+		or (ActiveCamera and ActiveCamera.CFrame.Position)
+	if typeof(HitOriginVector3) ~= "Vector3" then
+		return nil
+	end
+
+	local FlatDirectionVector3 = GetFallbackFlatAimDirectionVector3(LocalCharacterModel, ReferenceDirectionVector3, TargetPositionVector3)
+	local ShotDirectionVector3 = (Vector3.new(FlatDirectionVector3.X, 1, FlatDirectionVector3.Z)).Unit
+	return {
+		direction = ShotDirectionVector3,
+		hitPosition = HitOriginVector3 + ShotDirectionVector3 * SkyAimHitDistanceNumber,
+		facingDirection = FlatDirectionVector3,
+		priority = -1,
+		isFallback = true,
+	}
+end
+
 local function BuildSkyAimCandidateFacingDirection(BaseFlatDirectionVector3, YawRotationCFrame)
 	local FlatDirectionVector3 = Vector3.new(BaseFlatDirectionVector3.X, 0, BaseFlatDirectionVector3.Z)
 	if FlatDirectionVector3.Magnitude <= 0.001 then
@@ -3234,8 +3295,9 @@ function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, E
 		TargetPositionVector3, TargetCharacterModel, TargetPartInstance = ResolveCurrentSkyTargetData()
 	end
 	local BaseFlatDirectionVector3 = GetFallbackFlatAimDirectionVector3(LocalCharacterModel, ReferenceDirectionVector3, TargetPositionVector3)
+	local FallbackSolutionTable = BuildFallbackSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, TargetPositionVector3)
 	if typeof(TargetPositionVector3) ~= "Vector3" then
-		return nil
+		return FallbackSolutionTable
 	end
 
 	local HeadPositionVector3 = HeadPartInstance.Position
@@ -3312,8 +3374,26 @@ function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, E
 	end
 
 	local function ConsiderCandidate(CandidateDirectionVector3, CandidateFacingDirectionVector3, CandidateMuzzleOriginVector3, CandidateHeadPositionVector3, PitchDegreeNumber, YawDegreeNumber)
-		local MuzzleMissDistanceNumber, MuzzleAlongNumber = GetPointToRayDistance(TargetPositionVector3, CandidateMuzzleOriginVector3, CandidateDirectionVector3)
-		local HeadMissDistanceNumber, HeadAlongNumber = GetPointToRayDistance(TargetPositionVector3, CandidateHeadPositionVector3, CandidateDirectionVector3)
+		local CandidateTargetOffsetVector3 = TargetPositionVector3 - CandidateMuzzleOriginVector3
+		local CandidateHeadTargetOffsetVector3 = TargetPositionVector3 - CandidateHeadPositionVector3
+		if CandidateTargetOffsetVector3.Magnitude <= 0.001 or CandidateHeadTargetOffsetVector3.Magnitude <= 0.001 then
+			return
+		end
+
+		-- The pitch/yaw candidate is the simulated weapon pose. Reachability still
+		-- follows the real muzzle-to-target line because the hook redirects that line.
+		local CandidateTargetDirectionVector3 = CandidateTargetOffsetVector3.Unit
+		local CandidateHeadTargetDirectionVector3 = CandidateHeadTargetOffsetVector3.Unit
+		local MuzzleMissDistanceNumber, MuzzleAlongNumber = GetPointToRayDistance(
+			TargetPositionVector3,
+			CandidateMuzzleOriginVector3,
+			CandidateTargetDirectionVector3
+		)
+		local HeadMissDistanceNumber, HeadAlongNumber = GetPointToRayDistance(
+			TargetPositionVector3,
+			CandidateHeadPositionVector3,
+			CandidateHeadTargetDirectionVector3
+		)
 		local MissDistanceNumber = math.min(MuzzleMissDistanceNumber, HeadMissDistanceNumber)
 		local AlongNumber = math.max(MuzzleAlongNumber, HeadAlongNumber)
 		if AlongNumber <= 0 then
@@ -3359,7 +3439,7 @@ function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, E
 			local RaycastDistanceNumber = math.max(CandidateTargetDistanceNumber + 6, 12)
 			local RaycastResult = RunUnredirectedWorkspaceRaycast(
 				CandidateMuzzleOriginVector3,
-				CandidateDirectionVector3 * RaycastDistanceNumber,
+				CandidateTargetDirectionVector3 * RaycastDistanceNumber,
 				CurrentLocalGunRaycastParamsObject
 			)
 			DirectHitBoolean = IsRaycastResultTargetHit(RaycastResult, TargetCharacterModel)
@@ -3466,6 +3546,8 @@ function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, E
 			and (BestApproximateSolutionTable.priority or 0) > 0
 			and (BestApproximateSolutionTable.missDistance or math.huge) <= (AlignmentToleranceNumber * 4) then
 			FinalSolutionTable = BestApproximateSolutionTable
+		else
+			FinalSolutionTable = FallbackSolutionTable
 		end
 	end
 
@@ -3768,7 +3850,8 @@ local function ResolveShotSkyAimDataTable(LocalCharacterModel, ReferenceDirectio
 	return FinalizeShotSkyAimData({
 		direction = SkyAimSolutionTable.direction,
 		facingDirection = FacingDirectionVector3,
-		hitPosition = SkyAimSolutionTable.hitPosition,
+		-- Keep fallback poses from replacing the cursor with an upward point.
+		hitPosition = (SkyAimSolutionTable.priority or -1) >= 3 and SkyAimSolutionTable.hitPosition or nil,
 		priority = SkyAimSolutionTable.priority,
 	})
 end
@@ -7441,7 +7524,17 @@ function ShieldModeRuntimeTable.GetFireGunMuzzleRedirect(ActiveFiringLocalGunTab
 		return nil, nil
 	end
 
-	return MuzzleOriginVector3, RedirectDirectionVector3.Unit * DirectionMagnitudeNumber
+	local WeaponBallisticsProfileTable = CurrentWeaponBallisticsProfileTable
+		or ShieldModeRuntimeTable.ResolveCurrentWeaponBallisticsProfile(ActiveFiringLocalGunTable.CharacterModel)
+	local RedirectDistanceNumber = ShieldModeRuntimeTable.GetShotgunRedirectDistance
+		and ShieldModeRuntimeTable.GetShotgunRedirectDistance(
+			WeaponBallisticsProfileTable,
+			MuzzleOriginVector3,
+			TargetPositionVector3,
+			DirectionMagnitudeNumber
+		)
+		or DirectionMagnitudeNumber
+	return MuzzleOriginVector3, RedirectDirectionVector3.Unit * RedirectDistanceNumber
 end
 
 function ShieldModeRuntimeTable.ShouldSkipBloodZoneProjectileRaycastRedirect(LocalCharacterModel, RaycastParamsObject)
@@ -7553,7 +7646,18 @@ ShieldModeRuntimeTable.oldNamecall = hookmetamethod(game, "__namecall", function
 			elseif ShieldModeRuntimeTable.ShouldSkipBloodZoneProjectileRaycastRedirect(LocalCharacterModel, RaycastParamsObject) then
 				return ShieldModeRuntimeTable.oldNamecall(Self, ...)
 			else
-				Args[2] = (TargetPosition - Origin).Unit * Direction.Magnitude
+				local RedirectDistanceNumber = Direction.Magnitude
+				if IsBloodZonePlaceBoolean and ShieldModeRuntimeTable.GetShotgunRedirectDistance then
+					local WeaponBallisticsProfileTable = CurrentWeaponBallisticsProfileTable
+						or ShieldModeRuntimeTable.ResolveCurrentWeaponBallisticsProfile(LocalCharacterModel)
+					RedirectDistanceNumber = ShieldModeRuntimeTable.GetShotgunRedirectDistance(
+						WeaponBallisticsProfileTable,
+						Origin,
+						TargetPosition,
+						Direction.Magnitude
+					)
+				end
+				Args[2] = (TargetPosition - Origin).Unit * RedirectDistanceNumber
 			end
 		end
 
@@ -7563,7 +7667,18 @@ ShieldModeRuntimeTable.oldNamecall = hookmetamethod(game, "__namecall", function
 	local RayObject = Args[1]
 	if RayObject then
 		local TargetPosition = GetCurrentEffectiveAimPointVector3() or CurrentTargetPartInstance.Position
-		local NewDirection = (TargetPosition - RayObject.Origin).Unit * RayObject.Direction.Magnitude
+		local RedirectDistanceNumber = RayObject.Direction.Magnitude
+		if IsBloodZonePlaceBoolean and ShieldModeRuntimeTable.GetShotgunRedirectDistance then
+			local WeaponBallisticsProfileTable = CurrentWeaponBallisticsProfileTable
+				or ShieldModeRuntimeTable.ResolveCurrentWeaponBallisticsProfile(LocalCharacterModel)
+			RedirectDistanceNumber = ShieldModeRuntimeTable.GetShotgunRedirectDistance(
+				WeaponBallisticsProfileTable,
+				RayObject.Origin,
+				TargetPosition,
+				RayObject.Direction.Magnitude
+			)
+		end
+		local NewDirection = (TargetPosition - RayObject.Origin).Unit * RedirectDistanceNumber
 		Args[1] = Ray.new(RayObject.Origin, NewDirection)
 	end
 

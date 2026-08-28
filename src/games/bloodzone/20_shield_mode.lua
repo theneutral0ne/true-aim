@@ -262,7 +262,8 @@ local function ResolveShotSkyAimDataTable(LocalCharacterModel, ReferenceDirectio
 	return FinalizeShotSkyAimData({
 		direction = SkyAimSolutionTable.direction,
 		facingDirection = FacingDirectionVector3,
-		hitPosition = SkyAimSolutionTable.hitPosition,
+		-- Keep fallback poses from replacing the cursor with an upward point.
+		hitPosition = (SkyAimSolutionTable.priority or -1) >= 3 and SkyAimSolutionTable.hitPosition or nil,
 		priority = SkyAimSolutionTable.priority,
 	})
 end

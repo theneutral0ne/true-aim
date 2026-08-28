@@ -82,7 +82,18 @@ ShieldModeRuntimeTable.oldNamecall = hookmetamethod(game, "__namecall", function
 			elseif ShieldModeRuntimeTable.ShouldSkipBloodZoneProjectileRaycastRedirect(LocalCharacterModel, RaycastParamsObject) then
 				return ShieldModeRuntimeTable.oldNamecall(Self, ...)
 			else
-				Args[2] = (TargetPosition - Origin).Unit * Direction.Magnitude
+				local RedirectDistanceNumber = Direction.Magnitude
+				if IsBloodZonePlaceBoolean and ShieldModeRuntimeTable.GetShotgunRedirectDistance then
+					local WeaponBallisticsProfileTable = CurrentWeaponBallisticsProfileTable
+						or ShieldModeRuntimeTable.ResolveCurrentWeaponBallisticsProfile(LocalCharacterModel)
+					RedirectDistanceNumber = ShieldModeRuntimeTable.GetShotgunRedirectDistance(
+						WeaponBallisticsProfileTable,
+						Origin,
+						TargetPosition,
+						Direction.Magnitude
+					)
+				end
+				Args[2] = (TargetPosition - Origin).Unit * RedirectDistanceNumber
 			end
 		end
 
@@ -92,7 +103,18 @@ ShieldModeRuntimeTable.oldNamecall = hookmetamethod(game, "__namecall", function
 	local RayObject = Args[1]
 	if RayObject then
 		local TargetPosition = GetCurrentEffectiveAimPointVector3() or CurrentTargetPartInstance.Position
-		local NewDirection = (TargetPosition - RayObject.Origin).Unit * RayObject.Direction.Magnitude
+		local RedirectDistanceNumber = RayObject.Direction.Magnitude
+		if IsBloodZonePlaceBoolean and ShieldModeRuntimeTable.GetShotgunRedirectDistance then
+			local WeaponBallisticsProfileTable = CurrentWeaponBallisticsProfileTable
+				or ShieldModeRuntimeTable.ResolveCurrentWeaponBallisticsProfile(LocalCharacterModel)
+			RedirectDistanceNumber = ShieldModeRuntimeTable.GetShotgunRedirectDistance(
+				WeaponBallisticsProfileTable,
+				RayObject.Origin,
+				TargetPosition,
+				RayObject.Direction.Magnitude
+			)
+		end
+		local NewDirection = (TargetPosition - RayObject.Origin).Unit * RedirectDistanceNumber
 		Args[1] = Ray.new(RayObject.Origin, NewDirection)
 	end
 

@@ -1010,7 +1010,17 @@ function ShieldModeRuntimeTable.GetFireGunMuzzleRedirect(ActiveFiringLocalGunTab
 		return nil, nil
 	end
 
-	return MuzzleOriginVector3, RedirectDirectionVector3.Unit * DirectionMagnitudeNumber
+	local WeaponBallisticsProfileTable = CurrentWeaponBallisticsProfileTable
+		or ShieldModeRuntimeTable.ResolveCurrentWeaponBallisticsProfile(ActiveFiringLocalGunTable.CharacterModel)
+	local RedirectDistanceNumber = ShieldModeRuntimeTable.GetShotgunRedirectDistance
+		and ShieldModeRuntimeTable.GetShotgunRedirectDistance(
+			WeaponBallisticsProfileTable,
+			MuzzleOriginVector3,
+			TargetPositionVector3,
+			DirectionMagnitudeNumber
+		)
+		or DirectionMagnitudeNumber
+	return MuzzleOriginVector3, RedirectDirectionVector3.Unit * RedirectDistanceNumber
 end
 
 function ShieldModeRuntimeTable.ShouldSkipBloodZoneProjectileRaycastRedirect(LocalCharacterModel, RaycastParamsObject)
