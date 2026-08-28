@@ -37,22 +37,22 @@ function ConvertTo-LuaQuotedStringLiteral {
     return '"' + $escapedText + '"'
 }
 
-function ConvertTo-LuaLongStringLiteral {
-    param([AllowNull()][string]$Text)
+function Get-TopLevelLocalDeclarationNames {
+    param([AllowNull()][string]$DeclarationText)
 
-    if ($null -eq $Text) {
-        $Text = ""
+    $exportNameList = New-Object 'System.Collections.Generic.List[string]'
+    if ([string]::IsNullOrWhiteSpace($DeclarationText)) {
+        return @()
     }
 
-    $equalsCount = 0
-    while ($true) {
-        $delimiterEquals = '=' * $equalsCount
-        $closingDelimiter = ']' + $delimiterEquals + ']'
-        if ($Text.IndexOf($closingDelimiter, [System.StringComparison]::Ordinal) -lt 0) {
-            return '[' + $delimiterEquals + '[' + $Text + ']' + $delimiterEquals + ']'
+    foreach ($declarationPart in $DeclarationText -split ',') {
+        $exportName = ($declarationPart -split ':', 2)[0].Trim()
+        if ($exportName -match '^[A-Za-z_][A-Za-z0-9_]*$' -and -not $exportNameList.Contains($exportName)) {
+            $exportNameList.Add($exportName) | Out-Null
         }
-        $equalsCount++
     }
+
+    return $exportNameList.ToArray()
 }
 
 function Get-TopLevelLocalExportNames {
@@ -69,7 +69,7 @@ function Get-TopLevelLocalExportNames {
             continue
         }
 
-        if ($sourceLine -match '^local\s+function\s+([A-Za-z_][A-Za-z0-9_]*)') {
+        if ($sourceLine -match '^local\s+function\s+([A-Za-z_][A-Za-z0-9_]*)(.*)$') {
             $exportName = $Matches[1]
             if (-not $exportNameList.Contains($exportName)) {
                 $exportNameList.Add($exportName) | Out-Null
@@ -77,11 +77,9 @@ function Get-TopLevelLocalExportNames {
             continue
         }
 
-        if ($sourceLine -match '^local\s+(.+?)\s*(?:=\s*.*)?$') {
-            $declarationText = $Matches[1]
-            foreach ($declarationPart in $declarationText -split ',') {
-                $exportName = ($declarationPart -split ':', 2)[0].Trim()
-                if ($exportName -match '^[A-Za-z_][A-Za-z0-9_]*$' -and -not $exportNameList.Contains($exportName)) {
+        if ($sourceLine -match '^local\s+(.+?)(\s*=\s*.*)?$') {
+            foreach ($exportName in Get-TopLevelLocalDeclarationNames $Matches[1]) {
+                if (-not $exportNameList.Contains($exportName)) {
                     $exportNameList.Add($exportName) | Out-Null
                 }
             }
@@ -89,6 +87,92 @@ function Get-TopLevelLocalExportNames {
     }
 
     return $exportNameList.ToArray()
+}
+
+function Get-TopLevelSharedLocalNames {
+    param([object[]]$SegmentMetadataArray)
+
+    $sharedNameList = New-Object 'System.Collections.Generic.List[string]'
+
+    for ($currentIndex = 0; $currentIndex -lt $SegmentMetadataArray.Count; $currentIndex++) {
+        $currentMetadata = $SegmentMetadataArray[$currentIndex]
+        foreach ($exportName in $currentMetadata.ExportNames) {
+            if ($sharedNameList.Contains($exportName)) {
+                continue
+            }
+
+            for ($laterIndex = $currentIndex + 1; $laterIndex -lt $SegmentMetadataArray.Count; $laterIndex++) {
+                $laterSourceText = $SegmentMetadataArray[$laterIndex].SourceText
+                if ($laterSourceText -match ('(?<![A-Za-z0-9_])' + [regex]::Escape($exportName) + '(?![A-Za-z0-9_])')) {
+                    $sharedNameList.Add($exportName) | Out-Null
+                    break
+                }
+            }
+        }
+    }
+
+    return $sharedNameList.ToArray()
+}
+
+function Convert-SharedTopLevelLocalsToAssignments {
+    param(
+        [AllowNull()][string]$SourceText,
+        [System.Collections.Generic.HashSet[string]]$SharedLocalNameSet,
+        [string]$RelativePath
+    )
+
+    if ($null -eq $SourceText) {
+        return ""
+    }
+
+    $transformedLineList = New-Object 'System.Collections.Generic.List[string]'
+    $sourceLines = $SourceText -split "`r?`n"
+
+    for ($lineIndex = 0; $lineIndex -lt $sourceLines.Count; $lineIndex++) {
+        $sourceLine = $sourceLines[$lineIndex]
+
+        if ($sourceLine -match '^local\s+function\s+([A-Za-z_][A-Za-z0-9_]*)(.*)$') {
+            $functionName = $Matches[1]
+            if ($SharedLocalNameSet.Contains($functionName)) {
+                $transformedLineList.Add("function $functionName$($Matches[2])") | Out-Null
+            } else {
+                $transformedLineList.Add($sourceLine) | Out-Null
+            }
+            continue
+        }
+
+        if ($sourceLine -match '^local\s+(.+?)(\s*=\s*.*)?$') {
+            $declarationText = $Matches[1]
+            $initializerSuffix = $Matches[2]
+            $declarationNames = @(Get-TopLevelLocalDeclarationNames $declarationText)
+            if ($declarationNames.Count -eq 0) {
+                $transformedLineList.Add($sourceLine) | Out-Null
+                continue
+            }
+
+            $sharedDeclarationNames = @($declarationNames | Where-Object { $SharedLocalNameSet.Contains($_) })
+            if ($sharedDeclarationNames.Count -eq 0) {
+                $transformedLineList.Add($sourceLine) | Out-Null
+                continue
+            }
+
+            if ($sharedDeclarationNames.Count -ne $declarationNames.Count) {
+                throw "Mixed shared/non-shared top-level local declaration in $RelativePath at line $($lineIndex + 1): $sourceLine"
+            }
+
+            $assignmentLeftSide = [string]::Join(", ", $declarationNames)
+            if ([string]::IsNullOrWhiteSpace($initializerSuffix)) {
+                $transformedLineList.Add($assignmentLeftSide + " = " + $assignmentLeftSide) | Out-Null
+            } else {
+                $transformedLineList.Add($assignmentLeftSide + $initializerSuffix) | Out-Null
+            }
+            continue
+        }
+
+        $transformedLineList.Add($sourceLine) | Out-Null
+    }
+
+    return [string]::Join([Environment]::NewLine, $transformedLineList)
 }
 
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -119,94 +203,39 @@ foreach ($relativePath in $segmentPaths) {
     }) | Out-Null
 }
 
+$sharedLocalNames = @(Get-TopLevelSharedLocalNames $segmentMetadataList)
+$sharedLocalNameSet = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::Ordinal)
+foreach ($sharedLocalName in $sharedLocalNames) {
+    $sharedLocalNameSet.Add($sharedLocalName) | Out-Null
+}
+
 $bundleBuilder = New-Object System.Text.StringBuilder
 Add-BundleLine $bundleBuilder "-- true-aim bundle: generated by scripts/build.ps1"
 Add-BundleLine $bundleBuilder ('-- repository: ' + $repositoryFullName + ' @ ' + $branchName)
-Add-BundleLine $bundleBuilder "local LoadStringFunction = loadstring or load"
-Add-BundleLine $bundleBuilder 'if type(LoadStringFunction) ~= "function" then'
-Add-BundleLine $bundleBuilder '	error("true-aim: loadstring is unavailable in this environment", 0)'
-Add-BundleLine $bundleBuilder "end"
+Add-BundleLine $bundleBuilder ('-- assembled segments: ' + $segmentPaths.Count)
+Add-BundleLine $bundleBuilder ('-- shared top-level locals: ' + $sharedLocalNames.Count)
 Add-BundleLine $bundleBuilder ""
-Add-BundleLine $bundleBuilder "local function ResolveExecutionEnvironmentTable()"
-Add-BundleLine $bundleBuilder '	if type(getfenv) == "function" then'
-Add-BundleLine $bundleBuilder '		local SuccessBoolean, ResultValue = pcall(getfenv, 0)'
-Add-BundleLine $bundleBuilder '		if SuccessBoolean and type(ResultValue) == "table" then'
-Add-BundleLine $bundleBuilder "			return ResultValue"
-Add-BundleLine $bundleBuilder "		end"
-Add-BundleLine $bundleBuilder ""
-Add-BundleLine $bundleBuilder '		SuccessBoolean, ResultValue = pcall(getfenv)'
-Add-BundleLine $bundleBuilder '		if SuccessBoolean and type(ResultValue) == "table" then'
-Add-BundleLine $bundleBuilder "			return ResultValue"
-Add-BundleLine $bundleBuilder "		end"
-Add-BundleLine $bundleBuilder "	end"
-Add-BundleLine $bundleBuilder ""
-Add-BundleLine $bundleBuilder "	return _G"
-Add-BundleLine $bundleBuilder "end"
-Add-BundleLine $bundleBuilder ""
-Add-BundleLine $bundleBuilder "local SharedEnvironmentTable = ResolveExecutionEnvironmentTable()"
-Add-BundleLine $bundleBuilder 'if type(SharedEnvironmentTable) ~= "table" then'
-Add-BundleLine $bundleBuilder '	error("true-aim: failed to resolve execution environment", 0)'
-Add-BundleLine $bundleBuilder "end"
-Add-BundleLine $bundleBuilder ""
-Add-BundleLine $bundleBuilder 'SharedEnvironmentTable.__TRUE_AIM_EXPORT_ENV = SharedEnvironmentTable'
-Add-BundleLine $bundleBuilder ""
-Add-BundleLine $bundleBuilder "local BundleSegmentsTable = {"
 
-foreach ($segmentMetadata in $segmentMetadataList) {
-    Add-BundleLine $bundleBuilder "	{"
-    Add-BundleLine $bundleBuilder ('		path = ' + (ConvertTo-LuaQuotedStringLiteral $segmentMetadata.RelativePath) + ",")
-    Add-BundleLine $bundleBuilder "		exports = {"
-    foreach ($exportName in $segmentMetadata.ExportNames) {
-        Add-BundleLine $bundleBuilder ('			' + (ConvertTo-LuaQuotedStringLiteral $exportName) + ",")
+if ($sharedLocalNames.Count -gt 0) {
+    $sharedLocalChunkSize = 20
+    Add-BundleLine $bundleBuilder "-- cross-segment locals hoisted by the assembler"
+    for ($sharedIndex = 0; $sharedIndex -lt $sharedLocalNames.Count; $sharedIndex += $sharedLocalChunkSize) {
+        $sharedChunkEndIndex = [Math]::Min($sharedIndex + $sharedLocalChunkSize - 1, $sharedLocalNames.Count - 1)
+        $sharedChunk = $sharedLocalNames[$sharedIndex..$sharedChunkEndIndex]
+        Add-BundleLine $bundleBuilder ('local ' + [string]::Join(", ", $sharedChunk))
     }
-    Add-BundleLine $bundleBuilder "		},"
-    Add-BundleLine $bundleBuilder ('		source = ' + (ConvertTo-LuaLongStringLiteral $segmentMetadata.SourceText) + ",")
-    Add-BundleLine $bundleBuilder "	},"
+    Add-BundleLine $bundleBuilder ""
 }
 
-Add-BundleLine $bundleBuilder "}"
-Add-BundleLine $bundleBuilder ""
-Add-BundleLine $bundleBuilder "local function CompileSourceString(SourceString, ChunkNameString)"
-Add-BundleLine $bundleBuilder '	if LoadStringFunction == load and type(load) == "function" then'
-Add-BundleLine $bundleBuilder '		return LoadStringFunction(SourceString, ChunkNameString, "t", SharedEnvironmentTable)'
-Add-BundleLine $bundleBuilder "	end"
-Add-BundleLine $bundleBuilder ""
-Add-BundleLine $bundleBuilder "	local ChunkFunction, CompileErrorString = LoadStringFunction(SourceString, ChunkNameString)"
-Add-BundleLine $bundleBuilder '	if type(ChunkFunction) == "function" and type(setfenv) == "function" then'
-Add-BundleLine $bundleBuilder '		pcall(setfenv, ChunkFunction, SharedEnvironmentTable)'
-Add-BundleLine $bundleBuilder "	end"
-Add-BundleLine $bundleBuilder ""
-Add-BundleLine $bundleBuilder "	return ChunkFunction, CompileErrorString"
-Add-BundleLine $bundleBuilder "end"
-Add-BundleLine $bundleBuilder ""
-Add-BundleLine $bundleBuilder "local function CompileAndRunSegment(SegmentTable)"
-Add-BundleLine $bundleBuilder "	local WrappedSourceString = SegmentTable.source"
-Add-BundleLine $bundleBuilder "	if #SegmentTable.exports > 0 then"
-Add-BundleLine $bundleBuilder "		local ExportLinesTable = {}"
-Add-BundleLine $bundleBuilder "		for IndexNumber, ExportNameString in ipairs(SegmentTable.exports) do"
-Add-BundleLine $bundleBuilder '			ExportLinesTable[IndexNumber] = ("__TRUE_AIM_EXPORT_ENV[%q] = %s"):format(ExportNameString, ExportNameString)'
-Add-BundleLine $bundleBuilder "		end"
-Add-BundleLine $bundleBuilder '		WrappedSourceString = WrappedSourceString .. "\n" .. table.concat(ExportLinesTable, "\n")'
-Add-BundleLine $bundleBuilder "	end"
-Add-BundleLine $bundleBuilder ""
-Add-BundleLine $bundleBuilder '	local ChunkFunction, CompileErrorString = CompileSourceString(WrappedSourceString, "@" .. SegmentTable.path)'
-Add-BundleLine $bundleBuilder '	if type(ChunkFunction) ~= "function" then'
-Add-BundleLine $bundleBuilder '		error(("true-aim: failed to compile segment %s (%s)"):format(SegmentTable.path, tostring(CompileErrorString)), 0)'
-Add-BundleLine $bundleBuilder "	end"
-Add-BundleLine $bundleBuilder ""
-Add-BundleLine $bundleBuilder "	local SuccessBoolean, ResultValue = pcall(ChunkFunction)"
-Add-BundleLine $bundleBuilder '	if not SuccessBoolean then'
-Add-BundleLine $bundleBuilder '		error(ResultValue, 0)'
-Add-BundleLine $bundleBuilder "	end"
-Add-BundleLine $bundleBuilder ""
-Add-BundleLine $bundleBuilder "	return ResultValue"
-Add-BundleLine $bundleBuilder "end"
-Add-BundleLine $bundleBuilder ""
-Add-BundleLine $bundleBuilder "for _, SegmentTable in ipairs(BundleSegmentsTable) do"
-Add-BundleLine $bundleBuilder "	CompileAndRunSegment(SegmentTable)"
-Add-BundleLine $bundleBuilder "end"
-Add-BundleLine $bundleBuilder ""
-Add-BundleLine $bundleBuilder "SharedEnvironmentTable.__TRUE_AIM_EXPORT_ENV = nil"
+foreach ($segmentMetadata in $segmentMetadataList) {
+    $transformedSourceText = Convert-SharedTopLevelLocalsToAssignments $segmentMetadata.SourceText $sharedLocalNameSet $segmentMetadata.RelativePath
+    Add-BundleLine $bundleBuilder ('-- begin segment: ' + $segmentMetadata.RelativePath)
+    Add-BundleLine $bundleBuilder "do"
+    Add-BundleLine $bundleBuilder $transformedSourceText
+    Add-BundleLine $bundleBuilder "end"
+    Add-BundleLine $bundleBuilder ('-- end segment: ' + $segmentMetadata.RelativePath)
+    Add-BundleLine $bundleBuilder ""
+}
 
 [System.IO.File]::WriteAllText($bundleOutputPath, $bundleBuilder.ToString(), $utf8NoBom)
 
@@ -239,4 +268,11 @@ Add-BundleLine $launcherBuilder "return ChunkFunction()"
 
 [System.IO.File]::WriteAllText($launcherOutputPath, $launcherBuilder.ToString(), $utf8NoBom)
 
-Write-Host ("Built {0} and {1} from {2} source segments with {3} exported top-level locals." -f $bundleOutputPath, $launcherOutputPath, $segmentPaths.Count, $totalExportCount)
+Write-Host (
+    "Built {0} and {1} from {2} source segments with {3} shared top-level locals ({4} total top-level locals)." -f `
+    $bundleOutputPath, `
+    $launcherOutputPath, `
+    $segmentPaths.Count, `
+    $sharedLocalNames.Count, `
+    $totalExportCount
+)
