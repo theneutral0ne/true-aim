@@ -9,6 +9,9 @@ function ShieldModeRuntimeTable.ResetState()
 	ShieldModeRuntimeTable.reloadResumeUntilTime = 0
 	ShieldModeRuntimeTable.lastThreatScanTime = 0
 	ShieldModeRuntimeTable.cachedThreatData = nil
+	ShieldModeRuntimeTable.cachedAimingThreatData = nil
+	ShieldModeRuntimeTable.cachedThreatScanCharacter = nil
+	ShieldModeRuntimeTable.cachedThreatScanFrameId = 0
 	ShieldModeRuntimeTable.skyAimSolutionCache = nil
 	ShieldModeRuntimeTable.shotSkyAimDataCache = nil
 	ShieldModeRuntimeTable.forcedBodyRotationCFrame = nil
@@ -74,7 +77,14 @@ function ShieldModeRuntimeTable.FindLocalToolByName(CharacterModel, ToolNameStri
 end
 
 function ShieldModeRuntimeTable.GetLocalMetalShieldTool(CharacterModel)
-	return ShieldModeRuntimeTable.FindLocalToolByName(CharacterModel, "Metal Shield")
+	local DirectShieldTool = ShieldModeRuntimeTable.FindLocalToolByName(CharacterModel, "Metal Shield")
+	if DirectShieldTool then
+		return DirectShieldTool
+	end
+
+	local HeldItemStateTable = ShieldModeRuntimeTable.GetBloodZoneHeldItemState
+		and ShieldModeRuntimeTable.GetBloodZoneHeldItemState(CharacterModel) or nil
+	return HeldItemStateTable and HeldItemStateTable.shieldInstance or nil
 end
 
 function ShieldModeRuntimeTable.GetLocalSettings()
@@ -474,12 +484,29 @@ function ShieldModeRuntimeTable.EnsureCursorHooks()
 	DebugLog("shot-sky-cursor-hook", "Installed Blood Zone cursor hit override for shot sky aim", true)
 end
 
+local function CollectVisibleShieldParts(ShieldInstance)
+	local ShieldPartsTable = {}
+	if not ShieldInstance or not ShieldInstance.GetDescendants then
+		return ShieldPartsTable
+	end
+
+	for _, DescendantInstance in ipairs(ShieldInstance.GetDescendants(ShieldInstance)) do
+		if DescendantInstance.IsA(DescendantInstance, "BasePart")
+			and DescendantInstance.Transparency < 0.95 then
+			table.insert(ShieldPartsTable, DescendantInstance)
+		end
+	end
+
+	return ShieldPartsTable
+end
+
 function ShieldModeRuntimeTable.GetBloodZoneHeldItemState(CharacterModel)
 	local StateTable = {
 		hasGun = false,
 		hasShield = false,
 		gunInstance = nil,
 		shieldInstance = nil,
+		shieldParts = nil,
 	}
 	if not IsBloodZonePlaceBoolean or not CharacterModel then
 		return StateTable
@@ -584,6 +611,10 @@ function ShieldModeRuntimeTable.GetBloodZoneHeldItemState(CharacterModel)
 		end
 	end
 
+	if StateTable.shieldInstance then
+		StateTable.shieldParts = CollectVisibleShieldParts(StateTable.shieldInstance)
+	end
+
 	if ShieldModeRuntimeTable.heldItemStateCache then
 		ShieldModeRuntimeTable.heldItemStateCache[CharacterModel] = {
 			time = NowNumber,
@@ -592,6 +623,15 @@ function ShieldModeRuntimeTable.GetBloodZoneHeldItemState(CharacterModel)
 	end
 
 	return StateTable
+end
+
+function ShieldModeRuntimeTable.GetBloodZoneShieldVisibleParts(CharacterModel)
+	if not IsBloodZonePlaceBoolean or not CharacterModel then
+		return nil
+	end
+
+	local StateTable = ShieldModeRuntimeTable.GetBloodZoneHeldItemState(CharacterModel)
+	return StateTable and StateTable.shieldParts or nil
 end
 
 function ShieldModeRuntimeTable.ResolveModuleData()
@@ -730,7 +770,13 @@ function ShieldModeRuntimeTable.IsThreatCharacterValid(CharacterModel)
 		return false
 	end
 
-	return ShieldModeRuntimeTable.GetEquippedGunTool(CharacterModel) ~= nil
+	if ShieldModeRuntimeTable.GetEquippedGunTool(CharacterModel) then
+		return true
+	end
+
+	local HeldItemStateTable = ShieldModeRuntimeTable.GetBloodZoneHeldItemState
+		and ShieldModeRuntimeTable.GetBloodZoneHeldItemState(CharacterModel) or nil
+	return HeldItemStateTable ~= nil and HeldItemStateTable.hasGun == true
 end
 
 function ShieldModeRuntimeTable.GetThreatAimData(ThreatCharacterModel, LocalCharacterModel)
@@ -788,11 +834,14 @@ function ShieldModeRuntimeTable.GetThreatAimData(ThreatCharacterModel, LocalChar
 		if not BestThreatData or ThreatScoreNumber > BestThreatData.score then
 			BestThreatData = {
 				character = ThreatCharacterModel,
-				part = LocalPartInstance,
-				position = LocalPartInstance.Position,
+				part = ThreatOriginPartInstance,
+				position = ThreatOriginVector3,
+				targetPart = LocalPartInstance,
+				targetPosition = LocalPartInstance.Position,
 				score = ThreatScoreNumber,
 				dot = AimDotNumber,
 				distance = DistanceNumber,
+				source = "aiming",
 			}
 		end
 	end
@@ -914,18 +963,36 @@ function ShieldModeRuntimeTable.GetVisibleArmedThreatData(ThreatCharacterModel, 
 	}
 end
 
-function ShieldModeRuntimeTable.ResolveThreatData(LocalCharacterModel)
+local function IsThreatDataCacheEntryUsable(ThreatDataTable)
+	return ThreatDataTable == nil
+		or (ThreatDataTable.position ~= nil
+			and ((not ThreatDataTable.character) or ThreatDataTable.character.Parent))
+end
+
+local function ResolveCachedThreatData(LocalCharacterModel)
+	if not LocalCharacterModel then
+		return nil, nil
+	end
+
 	local NowNumber = tick()
-	local CachedThreatData = ShieldModeRuntimeTable.cachedThreatData
-	if CachedThreatData
-		and (NowNumber - ShieldModeRuntimeTable.lastThreatScanTime) < ShieldModeRuntimeTable.threatScanInterval
-		and CachedThreatData.position
-		and ((not CachedThreatData.character) or CachedThreatData.character.Parent) then
-		return CachedThreatData
+	local FrameIdNumber = tonumber(CurrentFrameSequenceNumber) or 0
+	local CacheAgeNumber = NowNumber - (ShieldModeRuntimeTable.lastThreatScanTime or 0)
+	local CacheCharacterMatchesBoolean = ShieldModeRuntimeTable.cachedThreatScanCharacter == LocalCharacterModel
+	local CacheIsCurrentFrameBoolean = FrameIdNumber > 0
+		and ShieldModeRuntimeTable.cachedThreatScanFrameId == FrameIdNumber
+	local CacheIsFreshBoolean = CacheAgeNumber < (ShieldModeRuntimeTable.threatScanInterval or 0.08)
+	if CacheCharacterMatchesBoolean
+		and (CacheIsCurrentFrameBoolean or CacheIsFreshBoolean)
+		and IsThreatDataCacheEntryUsable(ShieldModeRuntimeTable.cachedThreatData)
+		and IsThreatDataCacheEntryUsable(ShieldModeRuntimeTable.cachedAimingThreatData) then
+		return ShieldModeRuntimeTable.cachedThreatData, ShieldModeRuntimeTable.cachedAimingThreatData
 	end
 
 	ShieldModeRuntimeTable.lastThreatScanTime = NowNumber
+	ShieldModeRuntimeTable.cachedThreatScanCharacter = LocalCharacterModel
+	ShieldModeRuntimeTable.cachedThreatScanFrameId = FrameIdNumber
 	ShieldModeRuntimeTable.cachedThreatData = nil
+	ShieldModeRuntimeTable.cachedAimingThreatData = nil
 
 	local TeamCheckEnabledBoolean = false
 	local LocalTeamObject = nil
@@ -935,9 +1002,15 @@ function ShieldModeRuntimeTable.ResolveThreatData(LocalCharacterModel)
 	end
 
 	local BestThreatData = ShieldModeRuntimeTable.GetDamageIndicatorThreatData(LocalCharacterModel)
+	local BestAimingThreatData = nil
 	local CharacterEntries = GetSearchableCharacterEntries(LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
 	for _, CharacterEntry in ipairs(CharacterEntries) do
-		local ThreatData = ShieldModeRuntimeTable.GetThreatAimData(CharacterEntry.character, LocalCharacterModel)
+		local AimingThreatData = ShieldModeRuntimeTable.GetThreatAimData(CharacterEntry.character, LocalCharacterModel)
+		if AimingThreatData and (not BestAimingThreatData or AimingThreatData.score > BestAimingThreatData.score) then
+			BestAimingThreatData = AimingThreatData
+		end
+
+		local ThreatData = AimingThreatData
 		if not ThreatData then
 			ThreatData = ShieldModeRuntimeTable.GetVisibleArmedThreatData(CharacterEntry.character, LocalCharacterModel)
 		end
@@ -947,31 +1020,18 @@ function ShieldModeRuntimeTable.ResolveThreatData(LocalCharacterModel)
 	end
 
 	ShieldModeRuntimeTable.cachedThreatData = BestThreatData
-	return BestThreatData
+	ShieldModeRuntimeTable.cachedAimingThreatData = BestAimingThreatData
+	return BestThreatData, BestAimingThreatData
+end
+
+function ShieldModeRuntimeTable.ResolveThreatData(LocalCharacterModel)
+	local ThreatData = ResolveCachedThreatData(LocalCharacterModel)
+	return ThreatData
 end
 
 function ShieldModeRuntimeTable.ResolveAimingThreatData(LocalCharacterModel)
-	if not LocalCharacterModel then
-		return nil
-	end
-
-	local TeamCheckEnabledBoolean = false
-	local LocalTeamObject = nil
-	if not IsCustomCharacterGameBoolean and LocalPlayer.Team ~= nil then
-		TeamCheckEnabledBoolean = true
-		LocalTeamObject = LocalPlayer.Team
-	end
-
-	local BestThreatData = nil
-	local CharacterEntries = GetSearchableCharacterEntries(LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
-	for _, CharacterEntry in ipairs(CharacterEntries) do
-		local ThreatData = ShieldModeRuntimeTable.GetThreatAimData(CharacterEntry.character, LocalCharacterModel)
-		if ThreatData and (not BestThreatData or ThreatData.score > BestThreatData.score) then
-			BestThreatData = ThreatData
-		end
-	end
-
-	return BestThreatData
+	local _, AimingThreatData = ResolveCachedThreatData(LocalCharacterModel)
+	return AimingThreatData
 end
 
 function ShieldModeRuntimeTable.GetThreatFacingDirection(LocalCharacterModel, MetalShieldTool, EquippedTool)
@@ -999,6 +1059,24 @@ function ShieldModeRuntimeTable.GetThreatFacingDirection(LocalCharacterModel, Me
 	end
 
 	return FlatDirectionVector3.Unit, ThreatData
+end
+
+local function GetThreatAimDirectionVector3(LocalCharacterModel, ThreatData, FallbackDirectionVector3)
+	if not LocalCharacterModel or not ThreatData or typeof(ThreatData.position) ~= "Vector3" then
+		return FallbackDirectionVector3
+	end
+
+	local AimOriginPartInstance = GetCharacterHeadPart(LocalCharacterModel) or GetCharacterRootPart(LocalCharacterModel)
+	if not AimOriginPartInstance then
+		return FallbackDirectionVector3
+	end
+
+	local ThreatAimDirectionVector3 = ThreatData.position - AimOriginPartInstance.Position
+	if ThreatAimDirectionVector3.Magnitude <= 0.001 then
+		return FallbackDirectionVector3
+	end
+
+	return ThreatAimDirectionVector3.Unit
 end
 
 function ShieldModeRuntimeTable.ApplyBodyFacingOverride(SelfTable, FacingDirectionVector3, DeltaTimeNumber)
@@ -1109,16 +1187,27 @@ function ShieldModeRuntimeTable.EnsureLocalCharacterHooks()
 		local MetalShieldTool = LocalCharacterModel and ShieldModeRuntimeTable.GetLocalMetalShieldTool(LocalCharacterModel) or nil
 		local EquippedTool = LocalCharacterModel and ShieldModeRuntimeTable.GetEquippedTool(LocalCharacterModel) or nil
 		local ForcedDirectionVector3, ThreatData = ShieldModeRuntimeTable.GetThreatFacingDirection(LocalCharacterModel, MetalShieldTool, EquippedTool)
+		local ThreatAimDirectionVector3 = GetThreatAimDirectionVector3(LocalCharacterModel, ThreatData, ForcedDirectionVector3)
 		local ShotSkyAimDataTable = ResolveShotSkyAimDataTable(LocalCharacterModel, DirectionVector3, EquippedTool)
 		local ShotSkyDirectionVector3 = ShotSkyAimDataTable and ShotSkyAimDataTable.direction or nil
 		local ShotSkyFacingDirectionVector3 = ShotSkyAimDataTable and ShotSkyAimDataTable.facingDirection or nil
 
 		if ForcedDirectionVector3 and ShieldModeRuntimeTable.ApplyBodyFacingOverride(SelfTable, ForcedDirectionVector3, DeltaTimeNumber) then
-			DebugLog(
-				"shield-face-override",
-				"Shield Mode overriding LocalCharacter.UpdateLook toward " .. GetCharacterModelDebugName(ThreatData.character) .. " | dot=" .. string.format("%.2f", ThreatData.dot or -1),
-				false
-			)
+			DirectionVector3 = ThreatAimDirectionVector3 or DirectionVector3
+			if type(SelfTable.Rotate3rdPersonTime) == "number" then
+				SelfTable.Rotate3rdPersonTime = math.max(SelfTable.Rotate3rdPersonTime, 0.2)
+			end
+			if DebugModeEnabledBoolean then
+				DebugLog(
+					"shield-face-override",
+					"Shield Mode overriding LocalCharacter.UpdateLook toward " .. GetCharacterModelDebugName(ThreatData.character)
+						.. " | dot=" .. string.format("%.2f", ThreatData.dot or -1)
+						.. " | aim=" .. FormatDebugVector3(ThreatAimDirectionVector3),
+					false
+				)
+			end
+			-- Do not call the original look update here. In first person it restores
+			-- AutoRotate, which immediately undoes the forced shield-facing rotation.
 			return
 		end
 
@@ -1152,14 +1241,15 @@ function ShieldModeRuntimeTable.EnsureLocalCharacterHooks()
 		local MetalShieldTool = LocalCharacterModel and ShieldModeRuntimeTable.GetLocalMetalShieldTool(LocalCharacterModel) or nil
 		local EquippedTool = LocalCharacterModel and ShieldModeRuntimeTable.GetEquippedTool(LocalCharacterModel) or nil
 		local ShotSkyDirectionVector3 = ShieldModeRuntimeTable.GetShotSkyAimDirection(LocalCharacterModel, DirectionVector3, EquippedTool)
-		local ForcedDirectionVector3 = ShieldModeRuntimeTable.GetThreatFacingDirection(LocalCharacterModel, MetalShieldTool, EquippedTool)
-		if ShotSkyDirectionVector3 then
-			DirectionVector3 = ShotSkyDirectionVector3
+		local ForcedDirectionVector3, ThreatData = ShieldModeRuntimeTable.GetThreatFacingDirection(LocalCharacterModel, MetalShieldTool, EquippedTool)
+		local ThreatAimDirectionVector3 = GetThreatAimDirectionVector3(LocalCharacterModel, ThreatData, ForcedDirectionVector3)
+		if ForcedDirectionVector3 then
+			DirectionVector3 = ThreatAimDirectionVector3 or ForcedDirectionVector3
 			if type(SelfTable.Rotate3rdPersonTime) == "number" then
 				SelfTable.Rotate3rdPersonTime = math.max(SelfTable.Rotate3rdPersonTime, 0.2)
 			end
-		elseif ForcedDirectionVector3 then
-			DirectionVector3 = ForcedDirectionVector3
+		elseif ShotSkyDirectionVector3 then
+			DirectionVector3 = ShotSkyDirectionVector3
 			if type(SelfTable.Rotate3rdPersonTime) == "number" then
 				SelfTable.Rotate3rdPersonTime = math.max(SelfTable.Rotate3rdPersonTime, 0.2)
 			end
@@ -1177,11 +1267,22 @@ function ShieldModeRuntimeTable.ApplyThreatFacing(LocalCharacterModel, MetalShie
 		return
 	end
 
-	DebugLog(
-		"shield-face",
-		"Shield Mode facing threat " .. GetCharacterModelDebugName(ThreatData.character) .. " | dot=" .. string.format("%.2f", ThreatData.dot or -1) .. " | dist=" .. string.format("%.1f", ThreatData.distance or -1),
-		false
-	)
+	local LocalCharacterModuleTable = ShieldModeRuntimeTable.ResolveLocalCharacterModule()
+	if LocalCharacterModuleTable then
+		ShieldModeRuntimeTable.ApplyBodyFacingOverride(
+			LocalCharacterModuleTable,
+			ForcedDirectionVector3,
+			0.016
+		)
+	end
+
+	if DebugModeEnabledBoolean then
+		DebugLog(
+			"shield-face",
+			"Shield Mode facing threat " .. GetCharacterModelDebugName(ThreatData.character) .. " | dot=" .. string.format("%.2f", ThreatData.dot or -1) .. " | dist=" .. string.format("%.1f", ThreatData.distance or -1),
+			false
+		)
+	end
 end
 
 function ShieldModeRuntimeTable.GetSecondaryTool(CharacterModel)
@@ -1251,7 +1352,9 @@ function ShieldModeRuntimeTable.TryEquipTool(CharacterModel, ToolInstance, Reaso
 
 	if ShieldModeRuntimeTable.EquipTool(CharacterModel, ToolInstance) then
 		ShieldModeRuntimeTable.lastEquipAttemptTime = NowNumber
-		DebugLog("shield-equip-" .. ToolInstance.Name, "Shield Mode equipped " .. ToolInstance.Name .. " (" .. ReasonString .. ")", false)
+		if DebugModeEnabledBoolean then
+			DebugLog("shield-equip-" .. ToolInstance.Name, "Shield Mode equipped " .. ToolInstance.Name .. " (" .. ReasonString .. ")", false)
+		end
 		return true
 	end
 
@@ -1320,7 +1423,9 @@ function ShieldModeRuntimeTable.UpdateCombatState(LocalCharacterModel, WantsShot
 				EquippedTool = ShieldModeRuntimeTable.GetEquippedTool(LocalCharacterModel)
 			end
 			ShieldModeRuntimeTable.ApplyThreatFacing(LocalCharacterModel, MetalShieldTool, EquippedTool)
-			DebugLog("shield-reload-defer", "Shield Mode deferred reload because threat pressure from " .. GetCharacterModelDebugName(DelayReloadThreatData and DelayReloadThreatData.character), false)
+			if DebugModeEnabledBoolean then
+				DebugLog("shield-reload-defer", "Shield Mode deferred reload because threat pressure from " .. GetCharacterModelDebugName(DelayReloadThreatData and DelayReloadThreatData.character), false)
+			end
 			return true, nil
 		end
 
@@ -1328,14 +1433,18 @@ function ShieldModeRuntimeTable.UpdateCombatState(LocalCharacterModel, WantsShot
 			ShieldModeRuntimeTable.reloadObserved = true
 			ShieldModeRuntimeTable.reloadHoldUntilTime = NowNumber + ReloadTimeNumber + 0.05
 			ShieldModeRuntimeTable.reloadResumeUntilTime = 0
-			DebugLog("shield-reloading-start", "Shield Mode started reloading " .. tostring(SecondaryWeaponNameString), false)
+			if DebugModeEnabledBoolean then
+				DebugLog("shield-reloading-start", "Shield Mode started reloading " .. tostring(SecondaryWeaponNameString), false)
+			end
 		end
 		ShieldModeRuntimeTable.pendingReequipTime = 0
 		ShieldModeRuntimeTable.secondaryReadyTime = 0
 		if EquippedTool ~= SecondaryTool then
 			ShieldModeRuntimeTable.TryEquipTool(LocalCharacterModel, SecondaryTool, "reload", true)
 		end
-		DebugLog("shield-reloading", "Shield Mode holding " .. tostring(SecondaryWeaponNameString) .. " while it reloads", false)
+		if DebugModeEnabledBoolean then
+			DebugLog("shield-reloading", "Shield Mode holding " .. tostring(SecondaryWeaponNameString) .. " while it reloads", false)
+		end
 		return true, nil
 	elseif ShieldModeRuntimeTable.reloadObserved then
 		ShieldModeRuntimeTable.reloadObserved = false
@@ -1344,7 +1453,9 @@ function ShieldModeRuntimeTable.UpdateCombatState(LocalCharacterModel, WantsShot
 		ShieldModeRuntimeTable.pendingReequipTime = 0
 		ShieldModeRuntimeTable.reloadResumeUntilTime = 0
 		ShieldModeRuntimeTable.nextShotTime = math.max(ShieldModeRuntimeTable.nextShotTime, NowNumber + ReadyDelayNumber)
-		DebugLog("shield-reload-finished", "Shield Mode reload finished for " .. tostring(SecondaryWeaponNameString), false)
+		if DebugModeEnabledBoolean then
+			DebugLog("shield-reload-finished", "Shield Mode reload finished for " .. tostring(SecondaryWeaponNameString), false)
+		end
 	end
 
 	if ShieldModeRuntimeTable.reloadHoldUntilTime > 0 then
@@ -1454,7 +1565,9 @@ function ShieldModeRuntimeTable.FinalizeShot(ShotContextTable)
 	ShieldModeRuntimeTable.pendingReequipTime = ShotContextTable.now + ShotContextTable.reequipDelay
 	ShieldModeRuntimeTable.secondaryReadyTime = 0
 	LastAutoFireTimeNumber = ShotContextTable.now
-	DebugLog("shield-shot", "Shield Mode fired " .. tostring(ShotContextTable.secondaryName) .. " | shootTime=" .. string.format("%.3f", ShotContextTable.shootTime), false)
+	if DebugModeEnabledBoolean then
+		DebugLog("shield-shot", "Shield Mode fired " .. tostring(ShotContextTable.secondaryName) .. " | shootTime=" .. string.format("%.3f", ShotContextTable.shootTime), false)
+	end
 end
 
 local function AppendUniqueIgnoredInstance(IgnoredInstancesTable, IgnoredInstance)
@@ -1517,6 +1630,30 @@ local function IsLocalControlledCharacterModel(CharacterModel, LocalCharacterMod
 	return false
 end
 
+local ProjectilePreferredTargetPartNamesTable = {
+	"HumanoidRootPart",
+	"UpperTorso",
+	"Torso",
+	"LowerTorso",
+	"Center",
+	"HitboxPart",
+	"Head",
+}
+local StandardPreferredTargetPartNamesTable = {
+	"HitboxPart",
+	"Head",
+	"HumanoidRootPart",
+	"Torso",
+	"Center",
+}
+local PriorityTargetablePartNamesTable = {
+	hitboxpart = true,
+	head = true,
+	humanoidrootpart = true,
+	torso = true,
+	center = true,
+}
+
 local function IsPartUnderIgnoredAncestor(PartInstance, CharacterModel)
 	local AncestorInstance = PartInstance and PartInstance.Parent or nil
 	while AncestorInstance and AncestorInstance ~= CharacterModel do
@@ -1534,21 +1671,9 @@ GetPreferredTargetPart = function(CharacterModel)
 	end
 
 	local PreferProjectileBodyAimBoolean = ShouldPreferProjectileBodyAimForProfile(CurrentWeaponBallisticsProfileTable)
-	local PreferredPartNamesInOrderTable = PreferProjectileBodyAimBoolean and {
-		"HumanoidRootPart",
-		"UpperTorso",
-		"Torso",
-		"LowerTorso",
-		"Center",
-		"HitboxPart",
-		"Head",
-	} or {
-		"HitboxPart",
-		"Head",
-		"HumanoidRootPart",
-		"Torso",
-		"Center",
-	}
+	local PreferredPartNamesInOrderTable = PreferProjectileBodyAimBoolean
+		and ProjectilePreferredTargetPartNamesTable
+		or StandardPreferredTargetPartNamesTable
 
 	local PrimaryPartInstance = CharacterModel.PrimaryPart
 	if PrimaryPartInstance
@@ -1575,9 +1700,16 @@ local function GetTargetableParts(CharacterModel)
 		return {}
 	end
 
-	local ChildCountNumber = #CharacterModel.GetChildren(CharacterModel)
 	local NowNumber = tick()
 	local CachedEntryTable = TargetablePartsCacheTable[CharacterModel]
+	local FrameIdNumber = tonumber(CurrentFrameSequenceNumber) or 0
+	if CachedEntryTable
+		and FrameIdNumber > 0
+		and CachedEntryTable.frameId == FrameIdNumber then
+		return CachedEntryTable.parts
+	end
+
+	local ChildCountNumber = #CharacterModel.GetChildren(CharacterModel)
 	if CachedEntryTable
 		and CachedEntryTable.childCount == ChildCountNumber
 		and (NowNumber - CachedEntryTable.time) < TargetablePartsCacheDurationNumber then
@@ -1587,13 +1719,6 @@ local function GetTargetableParts(CharacterModel)
 	local PriorityTargetableParts = {}
 	local FallbackTargetableParts = {}
 	local SeenPartsTable = {}
-	local PriorityPartNamesTable = {
-		hitboxpart = true,
-		head = true,
-		humanoidrootpart = true,
-		torso = true,
-		center = true,
-	}
 
 	local function AddPartIfTargetable(PartInstance)
 		if SeenPartsTable[PartInstance] or not PartInstance.IsA(PartInstance, "BasePart") then
@@ -1606,7 +1731,7 @@ local function GetTargetableParts(CharacterModel)
 
 		SeenPartsTable[PartInstance] = true
 		local PartNameLowerString = string.lower(PartInstance.Name)
-		if PriorityPartNamesTable[PartNameLowerString] then
+		if PriorityTargetablePartNamesTable[PartNameLowerString] then
 			table.insert(PriorityTargetableParts, PartInstance)
 		else
 			table.insert(FallbackTargetableParts, PartInstance)
@@ -1628,6 +1753,7 @@ local function GetTargetableParts(CharacterModel)
 		TargetablePartsCacheTable[CharacterModel] = {
 			childCount = ChildCountNumber,
 			time = NowNumber,
+			frameId = FrameIdNumber,
 			parts = PriorityTargetableParts,
 		}
 		return PriorityTargetableParts
@@ -1636,6 +1762,7 @@ local function GetTargetableParts(CharacterModel)
 	TargetablePartsCacheTable[CharacterModel] = {
 		childCount = ChildCountNumber,
 		time = NowNumber,
+		frameId = FrameIdNumber,
 		parts = FallbackTargetableParts,
 	}
 	return FallbackTargetableParts

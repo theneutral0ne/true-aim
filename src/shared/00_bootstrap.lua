@@ -124,5 +124,7 @@ FrameTargetDataCacheTable = {
 	normal = {},
 	ignoreFov = {},
 }
+FrameVisiblePointCacheTable = {}
+FrameCharacterAliveCacheTable = {}
 FrameCharacterVelocityCacheTable = {}
 ObservedCharacterVelocitySampleByModelTable = setmetatable({}, { __mode = "k" })

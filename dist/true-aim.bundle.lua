@@ -138,6 +138,8 @@ FrameTargetDataCacheTable = {
 	normal = {},
 	ignoreFov = {},
 }
+FrameVisiblePointCacheTable = {}
+FrameCharacterAliveCacheTable = {}
 FrameCharacterVelocityCacheTable = {}
 ObservedCharacterVelocitySampleByModelTable = setmetatable({}, { __mode = "k" })
 
@@ -224,6 +226,9 @@ ShieldModeRuntimeTable = {
 	reloadResumeUntilTime = 0,
 	lastThreatScanTime = 0,
 	cachedThreatData = nil,
+	cachedAimingThreatData = nil,
+	cachedThreatScanCharacter = nil,
+	cachedThreatScanFrameId = 0,
 	threatScanInterval = 0.08,
 	lastEquipAttemptTime = 0,
 	equipThrottle = 0.03,
@@ -476,7 +481,7 @@ function GetTargetIdentity(PlayerObject, CharacterModel, PartInstance)
 end
 
 function UpdateDebugStatus(TextString)
-	if DebugStatusLabel then
+	if DebugModeEnabledBoolean and DebugStatusLabel then
 		DebugStatusLabel.Text = "Debug: " .. TextString
 	end
 end
@@ -952,19 +957,20 @@ function GetCharacterHeadPart(CharacterModel)
 	return nil
 end
 
+local PreferredTorsoPartNamesInOrderTable = {
+	"UpperTorso",
+	"Torso",
+	"LowerTorso",
+	"Center",
+	"HitboxPart",
+}
+
 function GetCharacterTorsoLikePart(CharacterModel)
 	if not CharacterModel then
 		return nil
 	end
 
-	local PreferredPartNamesInOrderTable = {
-		"UpperTorso",
-		"Torso",
-		"LowerTorso",
-		"Center",
-		"HitboxPart",
-	}
-	for _, PreferredPartNameString in ipairs(PreferredPartNamesInOrderTable) do
+	for _, PreferredPartNameString in ipairs(PreferredTorsoPartNamesInOrderTable) do
 		local PartInstance = CharacterModel.FindFirstChild(CharacterModel, PreferredPartNameString)
 		if PartInstance and PartInstance.IsA(PartInstance, "BasePart") then
 			return PartInstance
@@ -1850,7 +1856,6 @@ HasEquippedGun = function(CharacterModel)
 
 	return false
 end
-
 
 end
 -- end segment: src/shared/10_core.lua
@@ -3096,30 +3101,6 @@ local function GetFallbackFlatAimDirectionVector3(LocalCharacterModel, Reference
 	return Vector3.new(0, 0, -1)
 end
 
-local function BuildFallbackSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, TargetPositionVector3)
-	local HeadPartInstance = LocalCharacterModel and GetCharacterHeadPart(LocalCharacterModel) or nil
-	local RootPartInstance = LocalCharacterModel and GetCharacterRootPart(LocalCharacterModel) or nil
-	local ActiveCamera = WorkspaceService.CurrentCamera or Camera
-	local MuzzleOriginVector3 = ShieldModeRuntimeTable.GetCurrentLocalGunMuzzleOrigin
-		and ShieldModeRuntimeTable.GetCurrentLocalGunMuzzleOrigin(LocalCharacterModel) or nil
-	local HitOriginVector3 = MuzzleOriginVector3
-		or (HeadPartInstance and HeadPartInstance.Position)
-		or (RootPartInstance and RootPartInstance.Position)
-		or (ActiveCamera and ActiveCamera.CFrame.Position)
-	if typeof(HitOriginVector3) ~= "Vector3" then
-		return nil
-	end
-
-	local FlatDirectionVector3 = GetFallbackFlatAimDirectionVector3(LocalCharacterModel, ReferenceDirectionVector3, TargetPositionVector3)
-	local ShotDirectionVector3 = (Vector3.new(FlatDirectionVector3.X, 1, FlatDirectionVector3.Z)).Unit
-	return {
-		direction = ShotDirectionVector3,
-		hitPosition = HitOriginVector3 + ShotDirectionVector3 * SkyAimHitDistanceNumber,
-		facingDirection = FlatDirectionVector3,
-		priority = -1,
-	}
-end
-
 local function BuildSkyAimCandidateFacingDirection(BaseFlatDirectionVector3, YawRotationCFrame)
 	local FlatDirectionVector3 = Vector3.new(BaseFlatDirectionVector3.X, 0, BaseFlatDirectionVector3.Z)
 	if FlatDirectionVector3.Magnitude <= 0.001 then
@@ -3253,9 +3234,8 @@ function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, E
 		TargetPositionVector3, TargetCharacterModel, TargetPartInstance = ResolveCurrentSkyTargetData()
 	end
 	local BaseFlatDirectionVector3 = GetFallbackFlatAimDirectionVector3(LocalCharacterModel, ReferenceDirectionVector3, TargetPositionVector3)
-	local FallbackSolutionTable = BuildFallbackSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, TargetPositionVector3)
 	if typeof(TargetPositionVector3) ~= "Vector3" then
-		return FallbackSolutionTable
+		return nil
 	end
 
 	local HeadPositionVector3 = HeadPartInstance.Position
@@ -3264,9 +3244,51 @@ function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, E
 	if typeof(MuzzleOriginVector3) ~= "Vector3" then
 		MuzzleOriginVector3 = HeadPositionVector3
 	end
+	local CurrentLocalGunRaycastParamsObject = ShieldModeRuntimeTable.GetCurrentLocalGunRaycastParams
+		and ShieldModeRuntimeTable.GetCurrentLocalGunRaycastParams(LocalCharacterModel) or nil
+	local CurrentLocalGunCheckParamsObject = ShieldModeRuntimeTable.GetCurrentLocalGunCheckParams
+		and ShieldModeRuntimeTable.GetCurrentLocalGunCheckParams(LocalCharacterModel) or nil
 	if not SkipCacheBoolean then
 		local CachedSolutionTable = ShieldModeRuntimeTable.skyAimSolutionCache
+		local CachedSolutionValue = CachedSolutionTable and CachedSolutionTable.solution or nil
+		local CachedSolutionCanBeReusedBoolean = true
+		if CachedSolutionValue then
+			local CachedPriorityNumber = CachedSolutionValue.priority or 0
+			if CachedPriorityNumber < 2 then
+				CachedSolutionCanBeReusedBoolean = false
+			elseif TargetCharacterModel then
+				CachedSolutionCanBeReusedBoolean = false
+				local CachedMuzzleOriginVector3 = CachedSolutionValue.muzzleOrigin or CachedSolutionTable.muzzleOrigin
+				local CachedDirectionVector3 = CachedSolutionValue.direction
+				if typeof(CachedMuzzleOriginVector3) == "Vector3"
+					and typeof(CachedDirectionVector3) == "Vector3"
+					and CachedDirectionVector3.Magnitude > 0.001 then
+					if CachedPriorityNumber >= 3 and CurrentLocalGunRaycastParamsObject then
+						local CachedTargetDistanceNumber = (TargetPositionVector3 - CachedMuzzleOriginVector3).Magnitude
+						if CachedTargetDistanceNumber > 0.001 then
+							local CachedRaycastResult = RunUnredirectedWorkspaceRaycast(
+								CachedMuzzleOriginVector3,
+								CachedDirectionVector3.Unit * math.max(CachedTargetDistanceNumber + 6, 12),
+								CurrentLocalGunRaycastParamsObject
+							)
+							CachedSolutionCanBeReusedBoolean = IsRaycastResultTargetHit(CachedRaycastResult, TargetCharacterModel)
+						end
+					elseif CachedPriorityNumber >= 2
+						and CachedSolutionValue.headPosition
+						and CurrentLocalGunCheckParamsObject then
+							local CachedHeadRaycastResult = RunUnredirectedWorkspaceRaycast(
+								CachedSolutionValue.headPosition,
+								CachedDirectionVector3.Unit * 3.5,
+								CurrentLocalGunCheckParamsObject
+							)
+							CachedSolutionCanBeReusedBoolean = CachedHeadRaycastResult == nil
+						end
+					end
+				end
+			end
+		end
 		if CachedSolutionTable
+			and CachedSolutionCanBeReusedBoolean
 			and (tick() - (CachedSolutionTable.time or 0)) < SkyAimSolutionCacheDurationNumber
 			and CachedSolutionTable.localCharacter == LocalCharacterModel
 			and CachedSolutionTable.targetCharacter == TargetCharacterModel
@@ -3281,10 +3303,6 @@ function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, E
 		end
 	end
 
-	local CurrentLocalGunRaycastParamsObject = ShieldModeRuntimeTable.GetCurrentLocalGunRaycastParams
-		and ShieldModeRuntimeTable.GetCurrentLocalGunRaycastParams(LocalCharacterModel) or nil
-	local CurrentLocalGunCheckParamsObject = ShieldModeRuntimeTable.GetCurrentLocalGunCheckParams
-		and ShieldModeRuntimeTable.GetCurrentLocalGunCheckParams(LocalCharacterModel) or nil
 	local TargetDistanceNumber = (TargetPositionVector3 - MuzzleOriginVector3).Magnitude
 	local AlignmentToleranceNumber = GetSkyAimAlignmentTolerance(TargetPartInstance)
 	local BestSolutionTable = nil
@@ -3313,6 +3331,8 @@ function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, E
 		local AbsoluteYawNumber = math.abs(YawDegreeNumber)
 		local CandidateSolutionTable = {
 			direction = CandidateDirectionVector3,
+			muzzleOrigin = CandidateMuzzleOriginVector3,
+			headPosition = CandidateHeadPositionVector3,
 			hitPosition = CandidateMuzzleOriginVector3 + CandidateDirectionVector3 * SkyAimHitDistanceNumber,
 			facingDirection = FlatFacingDirectionVector3,
 			missDistance = MissDistanceNumber,
@@ -3431,7 +3451,7 @@ function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, E
 	end
 
 	local FinalSolutionTable = BestSolutionTable
-	if FinalSolutionTable and (FinalSolutionTable.priority or 0) <= 0 then
+	if FinalSolutionTable and (FinalSolutionTable.priority or 0) < 2 then
 		FinalSolutionTable = nil
 	end
 
@@ -3443,24 +3463,26 @@ function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, E
 	end
 
 	if not FinalSolutionTable then
-		if BestApproximateSolutionTable and (BestApproximateSolutionTable.missDistance or math.huge) <= (AlignmentToleranceNumber * 4) then
+		if BestApproximateSolutionTable
+			and (BestApproximateSolutionTable.priority or 0) > 0
+			and (BestApproximateSolutionTable.missDistance or math.huge) <= (AlignmentToleranceNumber * 4) then
 			FinalSolutionTable = BestApproximateSolutionTable
-		else
-			FinalSolutionTable = FallbackSolutionTable
 		end
 	end
 
 	if FinalSolutionTable then
-		TraceLog(
-			"sky-aim-final",
-			"pitch=" .. tostring(FinalSolutionTable.pitch)
-				.. " | yaw=" .. tostring(FinalSolutionTable.yaw or 0)
-				.. " | priority=" .. tostring(FinalSolutionTable.priority)
-				.. " | miss=" .. string.format("%.2f", FinalSolutionTable.missDistance or -1)
-				.. " | facing=" .. FormatDebugVector3(FinalSolutionTable.facingDirection)
-				.. " | dir=" .. FormatDebugVector3(FinalSolutionTable.direction),
-			false
-		)
+		if TraceModeEnabledBoolean then
+			TraceLog(
+				"sky-aim-final",
+				"pitch=" .. tostring(FinalSolutionTable.pitch)
+					.. " | yaw=" .. tostring(FinalSolutionTable.yaw or 0)
+					.. " | priority=" .. tostring(FinalSolutionTable.priority)
+					.. " | miss=" .. string.format("%.2f", FinalSolutionTable.missDistance or -1)
+					.. " | facing=" .. FormatDebugVector3(FinalSolutionTable.facingDirection)
+					.. " | dir=" .. FormatDebugVector3(FinalSolutionTable.direction),
+				false
+			)
+		end
 	end
 
 	if not SkipCacheBoolean then
@@ -3494,6 +3516,9 @@ function ShieldModeRuntimeTable.ResetState()
 	ShieldModeRuntimeTable.reloadResumeUntilTime = 0
 	ShieldModeRuntimeTable.lastThreatScanTime = 0
 	ShieldModeRuntimeTable.cachedThreatData = nil
+	ShieldModeRuntimeTable.cachedAimingThreatData = nil
+	ShieldModeRuntimeTable.cachedThreatScanCharacter = nil
+	ShieldModeRuntimeTable.cachedThreatScanFrameId = 0
 	ShieldModeRuntimeTable.skyAimSolutionCache = nil
 	ShieldModeRuntimeTable.shotSkyAimDataCache = nil
 	ShieldModeRuntimeTable.forcedBodyRotationCFrame = nil
@@ -3559,7 +3584,14 @@ function ShieldModeRuntimeTable.FindLocalToolByName(CharacterModel, ToolNameStri
 end
 
 function ShieldModeRuntimeTable.GetLocalMetalShieldTool(CharacterModel)
-	return ShieldModeRuntimeTable.FindLocalToolByName(CharacterModel, "Metal Shield")
+	local DirectShieldTool = ShieldModeRuntimeTable.FindLocalToolByName(CharacterModel, "Metal Shield")
+	if DirectShieldTool then
+		return DirectShieldTool
+	end
+
+	local HeldItemStateTable = ShieldModeRuntimeTable.GetBloodZoneHeldItemState
+		and ShieldModeRuntimeTable.GetBloodZoneHeldItemState(CharacterModel) or nil
+	return HeldItemStateTable and HeldItemStateTable.shieldInstance or nil
 end
 
 function ShieldModeRuntimeTable.GetLocalSettings()
@@ -3959,12 +3991,29 @@ function ShieldModeRuntimeTable.EnsureCursorHooks()
 	DebugLog("shot-sky-cursor-hook", "Installed Blood Zone cursor hit override for shot sky aim", true)
 end
 
+local function CollectVisibleShieldParts(ShieldInstance)
+	local ShieldPartsTable = {}
+	if not ShieldInstance or not ShieldInstance.GetDescendants then
+		return ShieldPartsTable
+	end
+
+	for _, DescendantInstance in ipairs(ShieldInstance.GetDescendants(ShieldInstance)) do
+		if DescendantInstance.IsA(DescendantInstance, "BasePart")
+			and DescendantInstance.Transparency < 0.95 then
+			table.insert(ShieldPartsTable, DescendantInstance)
+		end
+	end
+
+	return ShieldPartsTable
+end
+
 function ShieldModeRuntimeTable.GetBloodZoneHeldItemState(CharacterModel)
 	local StateTable = {
 		hasGun = false,
 		hasShield = false,
 		gunInstance = nil,
 		shieldInstance = nil,
+		shieldParts = nil,
 	}
 	if not IsBloodZonePlaceBoolean or not CharacterModel then
 		return StateTable
@@ -4069,6 +4118,10 @@ function ShieldModeRuntimeTable.GetBloodZoneHeldItemState(CharacterModel)
 		end
 	end
 
+	if StateTable.shieldInstance then
+		StateTable.shieldParts = CollectVisibleShieldParts(StateTable.shieldInstance)
+	end
+
 	if ShieldModeRuntimeTable.heldItemStateCache then
 		ShieldModeRuntimeTable.heldItemStateCache[CharacterModel] = {
 			time = NowNumber,
@@ -4077,6 +4130,15 @@ function ShieldModeRuntimeTable.GetBloodZoneHeldItemState(CharacterModel)
 	end
 
 	return StateTable
+end
+
+function ShieldModeRuntimeTable.GetBloodZoneShieldVisibleParts(CharacterModel)
+	if not IsBloodZonePlaceBoolean or not CharacterModel then
+		return nil
+	end
+
+	local StateTable = ShieldModeRuntimeTable.GetBloodZoneHeldItemState(CharacterModel)
+	return StateTable and StateTable.shieldParts or nil
 end
 
 function ShieldModeRuntimeTable.ResolveModuleData()
@@ -4215,7 +4277,13 @@ function ShieldModeRuntimeTable.IsThreatCharacterValid(CharacterModel)
 		return false
 	end
 
-	return ShieldModeRuntimeTable.GetEquippedGunTool(CharacterModel) ~= nil
+	if ShieldModeRuntimeTable.GetEquippedGunTool(CharacterModel) then
+		return true
+	end
+
+	local HeldItemStateTable = ShieldModeRuntimeTable.GetBloodZoneHeldItemState
+		and ShieldModeRuntimeTable.GetBloodZoneHeldItemState(CharacterModel) or nil
+	return HeldItemStateTable ~= nil and HeldItemStateTable.hasGun == true
 end
 
 function ShieldModeRuntimeTable.GetThreatAimData(ThreatCharacterModel, LocalCharacterModel)
@@ -4273,11 +4341,14 @@ function ShieldModeRuntimeTable.GetThreatAimData(ThreatCharacterModel, LocalChar
 		if not BestThreatData or ThreatScoreNumber > BestThreatData.score then
 			BestThreatData = {
 				character = ThreatCharacterModel,
-				part = LocalPartInstance,
-				position = LocalPartInstance.Position,
+				part = ThreatOriginPartInstance,
+				position = ThreatOriginVector3,
+				targetPart = LocalPartInstance,
+				targetPosition = LocalPartInstance.Position,
 				score = ThreatScoreNumber,
 				dot = AimDotNumber,
 				distance = DistanceNumber,
+				source = "aiming",
 			}
 		end
 	end
@@ -4399,18 +4470,36 @@ function ShieldModeRuntimeTable.GetVisibleArmedThreatData(ThreatCharacterModel, 
 	}
 end
 
-function ShieldModeRuntimeTable.ResolveThreatData(LocalCharacterModel)
+local function IsThreatDataCacheEntryUsable(ThreatDataTable)
+	return ThreatDataTable == nil
+		or (ThreatDataTable.position ~= nil
+			and ((not ThreatDataTable.character) or ThreatDataTable.character.Parent))
+end
+
+local function ResolveCachedThreatData(LocalCharacterModel)
+	if not LocalCharacterModel then
+		return nil, nil
+	end
+
 	local NowNumber = tick()
-	local CachedThreatData = ShieldModeRuntimeTable.cachedThreatData
-	if CachedThreatData
-		and (NowNumber - ShieldModeRuntimeTable.lastThreatScanTime) < ShieldModeRuntimeTable.threatScanInterval
-		and CachedThreatData.position
-		and ((not CachedThreatData.character) or CachedThreatData.character.Parent) then
-		return CachedThreatData
+	local FrameIdNumber = tonumber(CurrentFrameSequenceNumber) or 0
+	local CacheAgeNumber = NowNumber - (ShieldModeRuntimeTable.lastThreatScanTime or 0)
+	local CacheCharacterMatchesBoolean = ShieldModeRuntimeTable.cachedThreatScanCharacter == LocalCharacterModel
+	local CacheIsCurrentFrameBoolean = FrameIdNumber > 0
+		and ShieldModeRuntimeTable.cachedThreatScanFrameId == FrameIdNumber
+	local CacheIsFreshBoolean = CacheAgeNumber < (ShieldModeRuntimeTable.threatScanInterval or 0.08)
+	if CacheCharacterMatchesBoolean
+		and (CacheIsCurrentFrameBoolean or CacheIsFreshBoolean)
+		and IsThreatDataCacheEntryUsable(ShieldModeRuntimeTable.cachedThreatData)
+		and IsThreatDataCacheEntryUsable(ShieldModeRuntimeTable.cachedAimingThreatData) then
+		return ShieldModeRuntimeTable.cachedThreatData, ShieldModeRuntimeTable.cachedAimingThreatData
 	end
 
 	ShieldModeRuntimeTable.lastThreatScanTime = NowNumber
+	ShieldModeRuntimeTable.cachedThreatScanCharacter = LocalCharacterModel
+	ShieldModeRuntimeTable.cachedThreatScanFrameId = FrameIdNumber
 	ShieldModeRuntimeTable.cachedThreatData = nil
+	ShieldModeRuntimeTable.cachedAimingThreatData = nil
 
 	local TeamCheckEnabledBoolean = false
 	local LocalTeamObject = nil
@@ -4420,9 +4509,15 @@ function ShieldModeRuntimeTable.ResolveThreatData(LocalCharacterModel)
 	end
 
 	local BestThreatData = ShieldModeRuntimeTable.GetDamageIndicatorThreatData(LocalCharacterModel)
+	local BestAimingThreatData = nil
 	local CharacterEntries = GetSearchableCharacterEntries(LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
 	for _, CharacterEntry in ipairs(CharacterEntries) do
-		local ThreatData = ShieldModeRuntimeTable.GetThreatAimData(CharacterEntry.character, LocalCharacterModel)
+		local AimingThreatData = ShieldModeRuntimeTable.GetThreatAimData(CharacterEntry.character, LocalCharacterModel)
+		if AimingThreatData and (not BestAimingThreatData or AimingThreatData.score > BestAimingThreatData.score) then
+			BestAimingThreatData = AimingThreatData
+		end
+
+		local ThreatData = AimingThreatData
 		if not ThreatData then
 			ThreatData = ShieldModeRuntimeTable.GetVisibleArmedThreatData(CharacterEntry.character, LocalCharacterModel)
 		end
@@ -4432,31 +4527,18 @@ function ShieldModeRuntimeTable.ResolveThreatData(LocalCharacterModel)
 	end
 
 	ShieldModeRuntimeTable.cachedThreatData = BestThreatData
-	return BestThreatData
+	ShieldModeRuntimeTable.cachedAimingThreatData = BestAimingThreatData
+	return BestThreatData, BestAimingThreatData
+end
+
+function ShieldModeRuntimeTable.ResolveThreatData(LocalCharacterModel)
+	local ThreatData = ResolveCachedThreatData(LocalCharacterModel)
+	return ThreatData
 end
 
 function ShieldModeRuntimeTable.ResolveAimingThreatData(LocalCharacterModel)
-	if not LocalCharacterModel then
-		return nil
-	end
-
-	local TeamCheckEnabledBoolean = false
-	local LocalTeamObject = nil
-	if not IsCustomCharacterGameBoolean and LocalPlayer.Team ~= nil then
-		TeamCheckEnabledBoolean = true
-		LocalTeamObject = LocalPlayer.Team
-	end
-
-	local BestThreatData = nil
-	local CharacterEntries = GetSearchableCharacterEntries(LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
-	for _, CharacterEntry in ipairs(CharacterEntries) do
-		local ThreatData = ShieldModeRuntimeTable.GetThreatAimData(CharacterEntry.character, LocalCharacterModel)
-		if ThreatData and (not BestThreatData or ThreatData.score > BestThreatData.score) then
-			BestThreatData = ThreatData
-		end
-	end
-
-	return BestThreatData
+	local _, AimingThreatData = ResolveCachedThreatData(LocalCharacterModel)
+	return AimingThreatData
 end
 
 function ShieldModeRuntimeTable.GetThreatFacingDirection(LocalCharacterModel, MetalShieldTool, EquippedTool)
@@ -4484,6 +4566,24 @@ function ShieldModeRuntimeTable.GetThreatFacingDirection(LocalCharacterModel, Me
 	end
 
 	return FlatDirectionVector3.Unit, ThreatData
+end
+
+local function GetThreatAimDirectionVector3(LocalCharacterModel, ThreatData, FallbackDirectionVector3)
+	if not LocalCharacterModel or not ThreatData or typeof(ThreatData.position) ~= "Vector3" then
+		return FallbackDirectionVector3
+	end
+
+	local AimOriginPartInstance = GetCharacterHeadPart(LocalCharacterModel) or GetCharacterRootPart(LocalCharacterModel)
+	if not AimOriginPartInstance then
+		return FallbackDirectionVector3
+	end
+
+	local ThreatAimDirectionVector3 = ThreatData.position - AimOriginPartInstance.Position
+	if ThreatAimDirectionVector3.Magnitude <= 0.001 then
+		return FallbackDirectionVector3
+	end
+
+	return ThreatAimDirectionVector3.Unit
 end
 
 function ShieldModeRuntimeTable.ApplyBodyFacingOverride(SelfTable, FacingDirectionVector3, DeltaTimeNumber)
@@ -4594,16 +4694,27 @@ function ShieldModeRuntimeTable.EnsureLocalCharacterHooks()
 		local MetalShieldTool = LocalCharacterModel and ShieldModeRuntimeTable.GetLocalMetalShieldTool(LocalCharacterModel) or nil
 		local EquippedTool = LocalCharacterModel and ShieldModeRuntimeTable.GetEquippedTool(LocalCharacterModel) or nil
 		local ForcedDirectionVector3, ThreatData = ShieldModeRuntimeTable.GetThreatFacingDirection(LocalCharacterModel, MetalShieldTool, EquippedTool)
+		local ThreatAimDirectionVector3 = GetThreatAimDirectionVector3(LocalCharacterModel, ThreatData, ForcedDirectionVector3)
 		local ShotSkyAimDataTable = ResolveShotSkyAimDataTable(LocalCharacterModel, DirectionVector3, EquippedTool)
 		local ShotSkyDirectionVector3 = ShotSkyAimDataTable and ShotSkyAimDataTable.direction or nil
 		local ShotSkyFacingDirectionVector3 = ShotSkyAimDataTable and ShotSkyAimDataTable.facingDirection or nil
 
 		if ForcedDirectionVector3 and ShieldModeRuntimeTable.ApplyBodyFacingOverride(SelfTable, ForcedDirectionVector3, DeltaTimeNumber) then
-			DebugLog(
-				"shield-face-override",
-				"Shield Mode overriding LocalCharacter.UpdateLook toward " .. GetCharacterModelDebugName(ThreatData.character) .. " | dot=" .. string.format("%.2f", ThreatData.dot or -1),
-				false
-			)
+			DirectionVector3 = ThreatAimDirectionVector3 or DirectionVector3
+			if type(SelfTable.Rotate3rdPersonTime) == "number" then
+				SelfTable.Rotate3rdPersonTime = math.max(SelfTable.Rotate3rdPersonTime, 0.2)
+			end
+			if DebugModeEnabledBoolean then
+				DebugLog(
+					"shield-face-override",
+					"Shield Mode overriding LocalCharacter.UpdateLook toward " .. GetCharacterModelDebugName(ThreatData.character)
+						.. " | dot=" .. string.format("%.2f", ThreatData.dot or -1)
+						.. " | aim=" .. FormatDebugVector3(ThreatAimDirectionVector3),
+					false
+				)
+			end
+			-- Do not call the original look update here. In first person it restores
+			-- AutoRotate, which immediately undoes the forced shield-facing rotation.
 			return
 		end
 
@@ -4637,14 +4748,15 @@ function ShieldModeRuntimeTable.EnsureLocalCharacterHooks()
 		local MetalShieldTool = LocalCharacterModel and ShieldModeRuntimeTable.GetLocalMetalShieldTool(LocalCharacterModel) or nil
 		local EquippedTool = LocalCharacterModel and ShieldModeRuntimeTable.GetEquippedTool(LocalCharacterModel) or nil
 		local ShotSkyDirectionVector3 = ShieldModeRuntimeTable.GetShotSkyAimDirection(LocalCharacterModel, DirectionVector3, EquippedTool)
-		local ForcedDirectionVector3 = ShieldModeRuntimeTable.GetThreatFacingDirection(LocalCharacterModel, MetalShieldTool, EquippedTool)
-		if ShotSkyDirectionVector3 then
-			DirectionVector3 = ShotSkyDirectionVector3
+		local ForcedDirectionVector3, ThreatData = ShieldModeRuntimeTable.GetThreatFacingDirection(LocalCharacterModel, MetalShieldTool, EquippedTool)
+		local ThreatAimDirectionVector3 = GetThreatAimDirectionVector3(LocalCharacterModel, ThreatData, ForcedDirectionVector3)
+		if ForcedDirectionVector3 then
+			DirectionVector3 = ThreatAimDirectionVector3 or ForcedDirectionVector3
 			if type(SelfTable.Rotate3rdPersonTime) == "number" then
 				SelfTable.Rotate3rdPersonTime = math.max(SelfTable.Rotate3rdPersonTime, 0.2)
 			end
-		elseif ForcedDirectionVector3 then
-			DirectionVector3 = ForcedDirectionVector3
+		elseif ShotSkyDirectionVector3 then
+			DirectionVector3 = ShotSkyDirectionVector3
 			if type(SelfTable.Rotate3rdPersonTime) == "number" then
 				SelfTable.Rotate3rdPersonTime = math.max(SelfTable.Rotate3rdPersonTime, 0.2)
 			end
@@ -4662,11 +4774,22 @@ function ShieldModeRuntimeTable.ApplyThreatFacing(LocalCharacterModel, MetalShie
 		return
 	end
 
-	DebugLog(
-		"shield-face",
-		"Shield Mode facing threat " .. GetCharacterModelDebugName(ThreatData.character) .. " | dot=" .. string.format("%.2f", ThreatData.dot or -1) .. " | dist=" .. string.format("%.1f", ThreatData.distance or -1),
-		false
-	)
+	local LocalCharacterModuleTable = ShieldModeRuntimeTable.ResolveLocalCharacterModule()
+	if LocalCharacterModuleTable then
+		ShieldModeRuntimeTable.ApplyBodyFacingOverride(
+			LocalCharacterModuleTable,
+			ForcedDirectionVector3,
+			0.016
+		)
+	end
+
+	if DebugModeEnabledBoolean then
+		DebugLog(
+			"shield-face",
+			"Shield Mode facing threat " .. GetCharacterModelDebugName(ThreatData.character) .. " | dot=" .. string.format("%.2f", ThreatData.dot or -1) .. " | dist=" .. string.format("%.1f", ThreatData.distance or -1),
+			false
+		)
+	end
 end
 
 function ShieldModeRuntimeTable.GetSecondaryTool(CharacterModel)
@@ -4736,7 +4859,9 @@ function ShieldModeRuntimeTable.TryEquipTool(CharacterModel, ToolInstance, Reaso
 
 	if ShieldModeRuntimeTable.EquipTool(CharacterModel, ToolInstance) then
 		ShieldModeRuntimeTable.lastEquipAttemptTime = NowNumber
-		DebugLog("shield-equip-" .. ToolInstance.Name, "Shield Mode equipped " .. ToolInstance.Name .. " (" .. ReasonString .. ")", false)
+		if DebugModeEnabledBoolean then
+			DebugLog("shield-equip-" .. ToolInstance.Name, "Shield Mode equipped " .. ToolInstance.Name .. " (" .. ReasonString .. ")", false)
+		end
 		return true
 	end
 
@@ -4805,7 +4930,9 @@ function ShieldModeRuntimeTable.UpdateCombatState(LocalCharacterModel, WantsShot
 				EquippedTool = ShieldModeRuntimeTable.GetEquippedTool(LocalCharacterModel)
 			end
 			ShieldModeRuntimeTable.ApplyThreatFacing(LocalCharacterModel, MetalShieldTool, EquippedTool)
-			DebugLog("shield-reload-defer", "Shield Mode deferred reload because threat pressure from " .. GetCharacterModelDebugName(DelayReloadThreatData and DelayReloadThreatData.character), false)
+			if DebugModeEnabledBoolean then
+				DebugLog("shield-reload-defer", "Shield Mode deferred reload because threat pressure from " .. GetCharacterModelDebugName(DelayReloadThreatData and DelayReloadThreatData.character), false)
+			end
 			return true, nil
 		end
 
@@ -4813,14 +4940,18 @@ function ShieldModeRuntimeTable.UpdateCombatState(LocalCharacterModel, WantsShot
 			ShieldModeRuntimeTable.reloadObserved = true
 			ShieldModeRuntimeTable.reloadHoldUntilTime = NowNumber + ReloadTimeNumber + 0.05
 			ShieldModeRuntimeTable.reloadResumeUntilTime = 0
-			DebugLog("shield-reloading-start", "Shield Mode started reloading " .. tostring(SecondaryWeaponNameString), false)
+			if DebugModeEnabledBoolean then
+				DebugLog("shield-reloading-start", "Shield Mode started reloading " .. tostring(SecondaryWeaponNameString), false)
+			end
 		end
 		ShieldModeRuntimeTable.pendingReequipTime = 0
 		ShieldModeRuntimeTable.secondaryReadyTime = 0
 		if EquippedTool ~= SecondaryTool then
 			ShieldModeRuntimeTable.TryEquipTool(LocalCharacterModel, SecondaryTool, "reload", true)
 		end
-		DebugLog("shield-reloading", "Shield Mode holding " .. tostring(SecondaryWeaponNameString) .. " while it reloads", false)
+		if DebugModeEnabledBoolean then
+			DebugLog("shield-reloading", "Shield Mode holding " .. tostring(SecondaryWeaponNameString) .. " while it reloads", false)
+		end
 		return true, nil
 	elseif ShieldModeRuntimeTable.reloadObserved then
 		ShieldModeRuntimeTable.reloadObserved = false
@@ -4829,7 +4960,9 @@ function ShieldModeRuntimeTable.UpdateCombatState(LocalCharacterModel, WantsShot
 		ShieldModeRuntimeTable.pendingReequipTime = 0
 		ShieldModeRuntimeTable.reloadResumeUntilTime = 0
 		ShieldModeRuntimeTable.nextShotTime = math.max(ShieldModeRuntimeTable.nextShotTime, NowNumber + ReadyDelayNumber)
-		DebugLog("shield-reload-finished", "Shield Mode reload finished for " .. tostring(SecondaryWeaponNameString), false)
+		if DebugModeEnabledBoolean then
+			DebugLog("shield-reload-finished", "Shield Mode reload finished for " .. tostring(SecondaryWeaponNameString), false)
+		end
 	end
 
 	if ShieldModeRuntimeTable.reloadHoldUntilTime > 0 then
@@ -4939,7 +5072,9 @@ function ShieldModeRuntimeTable.FinalizeShot(ShotContextTable)
 	ShieldModeRuntimeTable.pendingReequipTime = ShotContextTable.now + ShotContextTable.reequipDelay
 	ShieldModeRuntimeTable.secondaryReadyTime = 0
 	LastAutoFireTimeNumber = ShotContextTable.now
-	DebugLog("shield-shot", "Shield Mode fired " .. tostring(ShotContextTable.secondaryName) .. " | shootTime=" .. string.format("%.3f", ShotContextTable.shootTime), false)
+	if DebugModeEnabledBoolean then
+		DebugLog("shield-shot", "Shield Mode fired " .. tostring(ShotContextTable.secondaryName) .. " | shootTime=" .. string.format("%.3f", ShotContextTable.shootTime), false)
+	end
 end
 
 function AppendUniqueIgnoredInstance(IgnoredInstancesTable, IgnoredInstance)
@@ -5002,6 +5137,30 @@ local function IsLocalControlledCharacterModel(CharacterModel, LocalCharacterMod
 	return false
 end
 
+local ProjectilePreferredTargetPartNamesTable = {
+	"HumanoidRootPart",
+	"UpperTorso",
+	"Torso",
+	"LowerTorso",
+	"Center",
+	"HitboxPart",
+	"Head",
+}
+local StandardPreferredTargetPartNamesTable = {
+	"HitboxPart",
+	"Head",
+	"HumanoidRootPart",
+	"Torso",
+	"Center",
+}
+local PriorityTargetablePartNamesTable = {
+	hitboxpart = true,
+	head = true,
+	humanoidrootpart = true,
+	torso = true,
+	center = true,
+}
+
 local function IsPartUnderIgnoredAncestor(PartInstance, CharacterModel)
 	local AncestorInstance = PartInstance and PartInstance.Parent or nil
 	while AncestorInstance and AncestorInstance ~= CharacterModel do
@@ -5019,21 +5178,9 @@ GetPreferredTargetPart = function(CharacterModel)
 	end
 
 	local PreferProjectileBodyAimBoolean = ShouldPreferProjectileBodyAimForProfile(CurrentWeaponBallisticsProfileTable)
-	local PreferredPartNamesInOrderTable = PreferProjectileBodyAimBoolean and {
-		"HumanoidRootPart",
-		"UpperTorso",
-		"Torso",
-		"LowerTorso",
-		"Center",
-		"HitboxPart",
-		"Head",
-	} or {
-		"HitboxPart",
-		"Head",
-		"HumanoidRootPart",
-		"Torso",
-		"Center",
-	}
+	local PreferredPartNamesInOrderTable = PreferProjectileBodyAimBoolean
+		and ProjectilePreferredTargetPartNamesTable
+		or StandardPreferredTargetPartNamesTable
 
 	local PrimaryPartInstance = CharacterModel.PrimaryPart
 	if PrimaryPartInstance
@@ -5060,9 +5207,16 @@ function GetTargetableParts(CharacterModel)
 		return {}
 	end
 
-	local ChildCountNumber = #CharacterModel.GetChildren(CharacterModel)
 	local NowNumber = tick()
 	local CachedEntryTable = TargetablePartsCacheTable[CharacterModel]
+	local FrameIdNumber = tonumber(CurrentFrameSequenceNumber) or 0
+	if CachedEntryTable
+		and FrameIdNumber > 0
+		and CachedEntryTable.frameId == FrameIdNumber then
+		return CachedEntryTable.parts
+	end
+
+	local ChildCountNumber = #CharacterModel.GetChildren(CharacterModel)
 	if CachedEntryTable
 		and CachedEntryTable.childCount == ChildCountNumber
 		and (NowNumber - CachedEntryTable.time) < TargetablePartsCacheDurationNumber then
@@ -5072,13 +5226,6 @@ function GetTargetableParts(CharacterModel)
 	local PriorityTargetableParts = {}
 	local FallbackTargetableParts = {}
 	local SeenPartsTable = {}
-	local PriorityPartNamesTable = {
-		hitboxpart = true,
-		head = true,
-		humanoidrootpart = true,
-		torso = true,
-		center = true,
-	}
 
 	local function AddPartIfTargetable(PartInstance)
 		if SeenPartsTable[PartInstance] or not PartInstance.IsA(PartInstance, "BasePart") then
@@ -5091,7 +5238,7 @@ function GetTargetableParts(CharacterModel)
 
 		SeenPartsTable[PartInstance] = true
 		local PartNameLowerString = string.lower(PartInstance.Name)
-		if PriorityPartNamesTable[PartNameLowerString] then
+		if PriorityTargetablePartNamesTable[PartNameLowerString] then
 			table.insert(PriorityTargetableParts, PartInstance)
 		else
 			table.insert(FallbackTargetableParts, PartInstance)
@@ -5113,6 +5260,7 @@ function GetTargetableParts(CharacterModel)
 		TargetablePartsCacheTable[CharacterModel] = {
 			childCount = ChildCountNumber,
 			time = NowNumber,
+			frameId = FrameIdNumber,
 			parts = PriorityTargetableParts,
 		}
 		return PriorityTargetableParts
@@ -5121,6 +5269,7 @@ function GetTargetableParts(CharacterModel)
 	TargetablePartsCacheTable[CharacterModel] = {
 		childCount = ChildCountNumber,
 		time = NowNumber,
+		frameId = FrameIdNumber,
 		parts = FallbackTargetableParts,
 	}
 	return FallbackTargetableParts
@@ -6290,6 +6439,42 @@ local function IsGlassVisibilityPart(PartInstance)
 	return HitFunctionValue == "Glass"
 end
 
+local VisibilityRaycastBaseParamsFrameId = -1
+local VisibilityRaycastBaseParamsValue = nil
+local LowercaseNameCacheTable = {}
+local HeadLikePartNameCacheTable = {}
+
+local function GetLowercaseCachedName(NameString)
+	if type(NameString) ~= "string" then
+		return ""
+	end
+
+	local CachedLowercaseNameString = LowercaseNameCacheTable[NameString]
+	if CachedLowercaseNameString then
+		return CachedLowercaseNameString
+	end
+
+	CachedLowercaseNameString = string.lower(NameString)
+	LowercaseNameCacheTable[NameString] = CachedLowercaseNameString
+	return CachedLowercaseNameString
+end
+
+local function IsHeadLikeTargetPart(PartInstance)
+	local PartNameString = PartInstance and PartInstance.Name or nil
+	if type(PartNameString) ~= "string" then
+		return false
+	end
+
+	local CachedHeadLikeBoolean = HeadLikePartNameCacheTable[PartNameString]
+	if CachedHeadLikeBoolean ~= nil then
+		return CachedHeadLikeBoolean
+	end
+
+	local HeadLikeBoolean = string.find(GetLowercaseCachedName(PartNameString), "head", 1, true) ~= nil
+	HeadLikePartNameCacheTable[PartNameString] = HeadLikeBoolean
+	return HeadLikeBoolean
+end
+
 local function CloneRaycastParamsWithIgnoredInstances(BaseRaycastParamsObject, ExtraIgnoredInstancesTable)
 	local RaycastParamsObject = RaycastParams.new()
 	if BaseRaycastParamsObject then
@@ -6325,19 +6510,24 @@ local function CloneRaycastParamsWithIgnoredInstances(BaseRaycastParamsObject, E
 end
 
 local function GetVisibilityRaycastBaseParams()
+	local FrameIdNumber = tonumber(CurrentFrameSequenceNumber) or 0
+	if VisibilityRaycastBaseParamsFrameId == FrameIdNumber and VisibilityRaycastBaseParamsValue then
+		return VisibilityRaycastBaseParamsValue
+	end
+
 	if IsBloodZonePlaceBoolean and ShieldModeRuntimeTable.GetCurrentLocalGunRaycastParams then
-		local LocalCharacterModel = ResolveCharacterModelForPlayer(LocalPlayer)
+		local LocalCharacterModel = CurrentFrameLocalCharacterReadyBoolean and CurrentFrameLocalCharacterModel or ResolveCharacterModelForPlayer(LocalPlayer)
 		local BaseRaycastParamsObject = ShieldModeRuntimeTable.GetCurrentLocalGunRaycastParams(LocalCharacterModel)
 		if BaseRaycastParamsObject then
+			VisibilityRaycastBaseParamsFrameId = FrameIdNumber
+			VisibilityRaycastBaseParamsValue = BaseRaycastParamsObject
 			return BaseRaycastParamsObject
 		end
 	end
 
+	VisibilityRaycastBaseParamsFrameId = FrameIdNumber
+	VisibilityRaycastBaseParamsValue = VisibilityRaycastParams
 	return VisibilityRaycastParams
-end
-
-local function CreateVisibilityRaycastParams(ExtraIgnoredInstancesTable)
-	return CloneRaycastParamsWithIgnoredInstances(GetVisibilityRaycastBaseParams(), ExtraIgnoredInstancesTable)
 end
 
 local function DoesSegmentIntersectPartBounds(SegmentStartVector3, SegmentEndVector3, PartInstance)
@@ -6390,12 +6580,25 @@ local function IsTargetPointBlockedByMetalShield(TargetPositionVector3, Characte
 		return false
 	end
 
+	local VisibilityOriginVector3 = CurrentVisibilityOriginVector3 or Camera.CFrame.Position
+	local ShieldPartsTable = ShieldModeRuntimeTable.GetBloodZoneShieldVisibleParts
+		and ShieldModeRuntimeTable.GetBloodZoneShieldVisibleParts(CharacterModel) or nil
+	if type(ShieldPartsTable) == "table" then
+		for _, ShieldPartInstance in ipairs(ShieldPartsTable) do
+			if ShieldPartInstance.Parent
+				and ShieldPartInstance.Transparency < 0.95
+				and DoesSegmentIntersectPartBounds(VisibilityOriginVector3, TargetPositionVector3, ShieldPartInstance) then
+				return true
+			end
+		end
+		return false
+	end
+
 	local MetalShieldTool = GetBloodZoneMetalShieldTool(CharacterModel)
 	if not MetalShieldTool then
 		return false
 	end
 
-	local VisibilityOriginVector3 = CurrentVisibilityOriginVector3 or Camera.CFrame.Position
 	for _, DescendantInstance in ipairs(MetalShieldTool.GetDescendants(MetalShieldTool)) do
 		if DescendantInstance.IsA(DescendantInstance, "BasePart")
 			and DescendantInstance.Transparency < 0.95
@@ -6419,20 +6622,23 @@ RaycastBetweenIgnoringGlass = function(OriginVector3, TargetPositionVector3, Ext
 	end
 
 	local DirectionUnitVector3 = FullDirectionVector3.Unit
-	local IgnoredInstancesTable = {}
-	if ExtraIgnoredInstancesTable then
-		for _, IgnoredInstance in ipairs(ExtraIgnoredInstancesTable) do
-			AppendUniqueIgnoredInstance(IgnoredInstancesTable, IgnoredInstance)
-		end
-	end
+	local BaseRaycastParamsObject = GetVisibilityRaycastBaseParams()
+	local MutableIgnoredInstancesTable = nil
+	local HasExtraIgnoredInstancesBoolean = ExtraIgnoredInstancesTable and #ExtraIgnoredInstancesTable > 0
 	local CurrentOriginVector3 = OriginVector3
 	local RemainingDistanceNumber = FullDistanceNumber
 
 	for _ = 1, 16 do
+		local ActiveIgnoredInstancesTable = MutableIgnoredInstancesTable
+		if not ActiveIgnoredInstancesTable and HasExtraIgnoredInstancesBoolean then
+			ActiveIgnoredInstancesTable = ExtraIgnoredInstancesTable
+		end
+		local RaycastParamsObject = ActiveIgnoredInstancesTable and CloneRaycastParamsWithIgnoredInstances(BaseRaycastParamsObject, ActiveIgnoredInstancesTable)
+			or BaseRaycastParamsObject
 		local RaycastResult = RunUnredirectedWorkspaceRaycast(
 			CurrentOriginVector3,
 			DirectionUnitVector3 * RemainingDistanceNumber,
-			CreateVisibilityRaycastParams(IgnoredInstancesTable)
+			RaycastParamsObject
 		)
 
 		if not RaycastResult then
@@ -6443,7 +6649,15 @@ RaycastBetweenIgnoringGlass = function(OriginVector3, TargetPositionVector3, Ext
 			return RaycastResult
 		end
 
-		AppendUniqueIgnoredInstance(IgnoredInstancesTable, RaycastResult.Instance)
+		if not MutableIgnoredInstancesTable then
+			MutableIgnoredInstancesTable = {}
+			if HasExtraIgnoredInstancesBoolean then
+				for _, IgnoredInstance in ipairs(ExtraIgnoredInstancesTable) do
+					AppendUniqueIgnoredInstance(MutableIgnoredInstancesTable, IgnoredInstance)
+				end
+			end
+		end
+		AppendUniqueIgnoredInstance(MutableIgnoredInstancesTable, RaycastResult.Instance)
 		CurrentOriginVector3 = RaycastResult.Position + DirectionUnitVector3 * 0.01
 		RemainingDistanceNumber = FullDistanceNumber - (CurrentOriginVector3 - OriginVector3).Magnitude
 		if RemainingDistanceNumber <= 0.001 then
@@ -6538,7 +6752,7 @@ IsCharacterForceFieldProtected = function(CharacterModel, Humanoid)
 	return false
 end
 
-function IsCharacterAlive(CharacterModel)
+local function ComputeCharacterAlive(CharacterModel)
 	if not CharacterModel or not CharacterModel.Parent then
 		return false
 	end
@@ -6589,6 +6803,21 @@ function IsCharacterAlive(CharacterModel)
 	end
 
 	return false
+end
+
+function IsCharacterAlive(CharacterModel)
+	if not CharacterModel then
+		return false
+	end
+
+	local CachedAliveValue = FrameCharacterAliveCacheTable[CharacterModel]
+	if CachedAliveValue ~= nil then
+		return CachedAliveValue
+	end
+
+	local AliveBoolean = ComputeCharacterAlive(CharacterModel)
+	FrameCharacterAliveCacheTable[CharacterModel] = AliveBoolean
+	return AliveBoolean
 end
 
 local function GetProjectileArcVisibleTargetData(PartInstance, CharacterModel)
@@ -6790,7 +7019,14 @@ function ShieldModeRuntimeTable.ResolveEffectiveTargetGeometryForPart(PartInstan
 		return TargetPointVector3, CubeCFrame, CubeSize, EffectivePartInstance
 	end
 
-	local VisibleTargetData = GetVisiblePointForPart(PartInstance, CharacterModel, MouseLocationVector2)
+	local CachedVisibleTargetData = FrameVisiblePointCacheTable[PartInstance]
+	local VisibleTargetData = CachedVisibleTargetData
+	if CachedVisibleTargetData == nil then
+		VisibleTargetData = GetVisiblePointForPart(PartInstance, CharacterModel, MouseLocationVector2)
+		FrameVisiblePointCacheTable[PartInstance] = VisibleTargetData or false
+	elseif CachedVisibleTargetData == false then
+		VisibleTargetData = nil
+	end
 	if not VisibleTargetData then
 		return ShieldModeRuntimeTable.RejectTargetDataForPart(
 			"visible",
@@ -6953,8 +7189,7 @@ function ShieldModeRuntimeTable.GetBestTargetForCharacter(CharacterModel, MouseL
 			continue
 		end
 
-		local PartNameLowerString = string.lower(PartInstance.Name)
-		local IsHeadBoolean = string.find(PartNameLowerString, "head") ~= nil
+		local IsHeadBoolean = IsHeadLikeTargetPart(PartInstance)
 		local TargetSortDistanceNumber = GetTargetSortDistance(TargetData)
 		if IsHeadBoolean and TargetSortDistanceNumber < ClosestHeadDistanceNumber then
 			ClosestHeadDistanceNumber = TargetSortDistanceNumber
@@ -7070,7 +7305,9 @@ function ShieldModeRuntimeTable.RunTargetSearch(LocalCharacterModel, MouseLocati
 		local TargetableParts = GetTargetableParts(CharacterModel)
 		SearchResultTable.totalTargetablePartCount = SearchResultTable.totalTargetablePartCount + #TargetableParts
 		if #TargetableParts == 0 then
-			DebugLog("no-parts-" .. CharacterModel.Name, "Found no targetable parts for " .. CharacterModel.Name, false)
+			if DebugModeEnabledBoolean then
+				DebugLog("no-parts-" .. CharacterModel.Name, "Found no targetable parts for " .. CharacterModel.Name, false)
+			end
 		end
 
 		for _, PartInstance in ipairs(TargetableParts) do
@@ -7092,8 +7329,7 @@ function ShieldModeRuntimeTable.RunTargetSearch(LocalCharacterModel, MouseLocati
 				continue
 			end
 
-			local PartNameLowerString = string.lower(PartInstance.Name)
-			local IsHeadBoolean = string.find(PartNameLowerString, "head") ~= nil
+			local IsHeadBoolean = IsHeadLikeTargetPart(PartInstance)
 			local TargetSortDistanceNumber = GetTargetSortDistance(TargetData)
 			local PriorityPlayerBoolean = PlayerListRuntimeTable.IsPriorityPlayer(PlayerObject)
 			local AimingThreatCharacterBoolean = SearchResultTable.preferredAimingThreatCharacter ~= nil
@@ -7342,6 +7578,8 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 	local MouseOverPartInstance = MouseObject.Target
 	FrameTargetDataCacheTable.normal = ClearMutableTable(FrameTargetDataCacheTable.normal)
 	FrameTargetDataCacheTable.ignoreFov = ClearMutableTable(FrameTargetDataCacheTable.ignoreFov)
+	FrameVisiblePointCacheTable = ClearMutableTable(FrameVisiblePointCacheTable)
+	FrameCharacterAliveCacheTable = ClearMutableTable(FrameCharacterAliveCacheTable)
 	FrameCharacterVelocityCacheTable = ClearMutableTable(FrameCharacterVelocityCacheTable)
 	CurrentWeaponBallisticsProfileTable = nil
 	CurrentFrameLocalCharacterModel = nil
@@ -7539,15 +7777,21 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 			local CandidateIdentityString = GetTargetIdentity(CandidateData.player, CandidateData.character, CandidateData.part)
 			local CandidateThreatSuffixString = CandidateData.isAimingThreat and " threat" or ""
 			UpdateDebugStatus("candidate=" .. CandidateIdentityString .. CandidateThreatSuffixString .. " dist=" .. string.format("%.1f", CandidateData.distance or -1))
-			DebugLog("candidate-found", "Found candidate " .. CandidateIdentityString .. " at target distance " .. string.format("%.1f", CandidateData.distance or -1) .. " | threat=" .. tostring(CandidateData.isAimingThreat) .. " | vis=" .. tostring(IsEffectiveVisibleCheckEnabled()), false)
+			if DebugModeEnabledBoolean then
+				DebugLog("candidate-found", "Found candidate " .. CandidateIdentityString .. " at target distance " .. string.format("%.1f", CandidateData.distance or -1) .. " | threat=" .. tostring(CandidateData.isAimingThreat) .. " | vis=" .. tostring(IsEffectiveVisibleCheckEnabled()), false)
+			end
 		else
 			UpdateDebugStatus("no candidate | vis=" .. tostring(IsEffectiveVisibleCheckEnabled()) .. " line=" .. tostring(ShowTargetLineBoolean) .. " maxDist=" .. tostring(MaxDistanceNumber) .. " live=" .. tostring(TargetSearchResultTable.liveCharacterCount) .. " parts=" .. tostring(TargetSearchResultTable.totalTargetablePartCount))
-			DebugLog("candidate-missing", "Target search found no candidate. Mouse target=" .. SafeDebugName(MouseOverPartInstance) .. " | vis=" .. tostring(IsEffectiveVisibleCheckEnabled()) .. " | line=" .. tostring(ShowTargetLineBoolean) .. " | maxDist=" .. tostring(MaxDistanceNumber) .. " | live=" .. tostring(TargetSearchResultTable.liveCharacterCount) .. " | parts=" .. tostring(TargetSearchResultTable.totalTargetablePartCount) .. " | preferredThreat=" .. GetCharacterModelDebugName(TargetSearchResultTable.preferredAimingThreatCharacter) .. " | threatScore=" .. string.format("%.1f", TargetSearchResultTable.preferredAimingThreatScore or -1) .. " | rejects=" .. GetRejectCountsSummary(), false)
+			if DebugModeEnabledBoolean then
+				DebugLog("candidate-missing", "Target search found no candidate. Mouse target=" .. SafeDebugName(MouseOverPartInstance) .. " | vis=" .. tostring(IsEffectiveVisibleCheckEnabled()) .. " | line=" .. tostring(ShowTargetLineBoolean) .. " | maxDist=" .. tostring(MaxDistanceNumber) .. " | live=" .. tostring(TargetSearchResultTable.liveCharacterCount) .. " | parts=" .. tostring(TargetSearchResultTable.totalTargetablePartCount) .. " | preferredThreat=" .. GetCharacterModelDebugName(TargetSearchResultTable.preferredAimingThreatCharacter) .. " | threatScore=" .. string.format("%.1f", TargetSearchResultTable.preferredAimingThreatScore or -1) .. " | rejects=" .. GetRejectCountsSummary(), false)
+			end
 		end
 
 		if not CandidateData and FallbackIndicatorData and FallbackIndicatorData.part and FallbackIndicatorData.screen then
 			local FallbackIdentityString = GetTargetIdentity(FallbackIndicatorData.player, FallbackIndicatorData.character, FallbackIndicatorData.part)
-			DebugLog("indicator-fallback", "Using off-FOV indicator fallback for " .. FallbackIdentityString .. " at screen distance " .. string.format("%.1f", FallbackIndicatorData.distance or -1), false)
+			if DebugModeEnabledBoolean then
+				DebugLog("indicator-fallback", "Using off-FOV indicator fallback for " .. FallbackIdentityString .. " at screen distance " .. string.format("%.1f", FallbackIndicatorData.distance or -1), false)
+			end
 		end
 	end
 
@@ -7645,7 +7889,9 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 	end
 
 	if not CurrentTargetValidBoolean and not FinalTargetPartInstance then
-		DebugLog("target-cleared", "Clearing current target because no valid target or candidate exists", false)
+		if DebugModeEnabledBoolean then
+			DebugLog("target-cleared", "Clearing current target because no valid target or candidate exists", false)
+		end
 		ResetNormalHookHitChanceDecision()
 		CurrentTargetPartInstance = nil
 		CurrentTargetCharacterModel = nil
@@ -7674,7 +7920,9 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 			if FinalTargetScreenPositionVector2 then
 				LockedDistanceNumber = (FinalTargetScreenPositionVector2 - MouseLocationVector2).Magnitude
 			end
-			DebugLog("target-locked", "Locked target " .. FinalIdentityString .. " | target distance=" .. string.format("%.1f", LockedDistanceNumber), true)
+			if DebugModeEnabledBoolean then
+				DebugLog("target-locked", "Locked target " .. FinalIdentityString .. " | target distance=" .. string.format("%.1f", LockedDistanceNumber), true)
+			end
 			ResetNormalHookHitChanceDecision()
 			CurrentTargetPartInstance = FinalTargetPartInstance
 			CurrentTargetCharacterModel = FinalTargetCharacterModel
@@ -7717,7 +7965,9 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 		TargetLine.Visible = true
 		local IndicatorIdentityString = GetTargetIdentity(CurrentTargetPlayerObject, IndicatorCharacterModel, IndicatorPartInstance)
 		UpdateDebugStatus("line draw=" .. IndicatorIdentityString)
-		DebugLog("line-drawing", "Drawing target line to " .. IndicatorIdentityString .. " at " .. tostring(IndicatorScreenPositionVector2), false)
+		if DebugModeEnabledBoolean then
+			DebugLog("line-drawing", "Drawing target line to " .. IndicatorIdentityString .. " at " .. tostring(IndicatorScreenPositionVector2), false)
+		end
 		local CubeCFrame = IndicatorCubeCFrame or IndicatorPartInstance.CFrame
 		local CubeSize = IndicatorCubeSize or GetCubeSize(IndicatorPartInstance)
 		UpdateTargetCube(CubeCFrame, CubeSize, IndicatorPointVector3)
@@ -7742,7 +7992,9 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 		end
 		local HiddenReasonString = table.concat(HiddenReasonParts, ", ")
 		UpdateDebugStatus("line hidden=" .. HiddenReasonString)
-		DebugLog("line-hidden", "Target line hidden because " .. HiddenReasonString .. " | current=" .. SafeDebugName(CurrentTargetPartInstance) .. " | mouse target=" .. SafeDebugName(MouseOverPartInstance), false)
+		if DebugModeEnabledBoolean then
+			DebugLog("line-hidden", "Target line hidden because " .. HiddenReasonString .. " | current=" .. SafeDebugName(CurrentTargetPartInstance) .. " | mouse target=" .. SafeDebugName(MouseOverPartInstance), false)
+		end
 	end
 
 	if CurrentTargetPartInstance and IsCharacterAlive(CurrentTargetCharacterModel) then

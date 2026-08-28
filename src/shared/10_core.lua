@@ -138,7 +138,7 @@ local function GetTargetIdentity(PlayerObject, CharacterModel, PartInstance)
 end
 
 local function UpdateDebugStatus(TextString)
-	if DebugStatusLabel then
+	if DebugModeEnabledBoolean and DebugStatusLabel then
 		DebugStatusLabel.Text = "Debug: " .. TextString
 	end
 end
@@ -614,19 +614,20 @@ local function GetCharacterHeadPart(CharacterModel)
 	return nil
 end
 
+local PreferredTorsoPartNamesInOrderTable = {
+	"UpperTorso",
+	"Torso",
+	"LowerTorso",
+	"Center",
+	"HitboxPart",
+}
+
 local function GetCharacterTorsoLikePart(CharacterModel)
 	if not CharacterModel then
 		return nil
 	end
 
-	local PreferredPartNamesInOrderTable = {
-		"UpperTorso",
-		"Torso",
-		"LowerTorso",
-		"Center",
-		"HitboxPart",
-	}
-	for _, PreferredPartNameString in ipairs(PreferredPartNamesInOrderTable) do
+	for _, PreferredPartNameString in ipairs(PreferredTorsoPartNamesInOrderTable) do
 		local PartInstance = CharacterModel.FindFirstChild(CharacterModel, PreferredPartNameString)
 		if PartInstance and PartInstance.IsA(PartInstance, "BasePart") then
 			return PartInstance
@@ -1512,4 +1513,3 @@ HasEquippedGun = function(CharacterModel)
 
 	return false
 end
-

@@ -106,6 +106,8 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 	local MouseOverPartInstance = MouseObject.Target
 	FrameTargetDataCacheTable.normal = ClearMutableTable(FrameTargetDataCacheTable.normal)
 	FrameTargetDataCacheTable.ignoreFov = ClearMutableTable(FrameTargetDataCacheTable.ignoreFov)
+	FrameVisiblePointCacheTable = ClearMutableTable(FrameVisiblePointCacheTable)
+	FrameCharacterAliveCacheTable = ClearMutableTable(FrameCharacterAliveCacheTable)
 	FrameCharacterVelocityCacheTable = ClearMutableTable(FrameCharacterVelocityCacheTable)
 	CurrentWeaponBallisticsProfileTable = nil
 	CurrentFrameLocalCharacterModel = nil
@@ -303,15 +305,21 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 			local CandidateIdentityString = GetTargetIdentity(CandidateData.player, CandidateData.character, CandidateData.part)
 			local CandidateThreatSuffixString = CandidateData.isAimingThreat and " threat" or ""
 			UpdateDebugStatus("candidate=" .. CandidateIdentityString .. CandidateThreatSuffixString .. " dist=" .. string.format("%.1f", CandidateData.distance or -1))
-			DebugLog("candidate-found", "Found candidate " .. CandidateIdentityString .. " at target distance " .. string.format("%.1f", CandidateData.distance or -1) .. " | threat=" .. tostring(CandidateData.isAimingThreat) .. " | vis=" .. tostring(IsEffectiveVisibleCheckEnabled()), false)
+			if DebugModeEnabledBoolean then
+				DebugLog("candidate-found", "Found candidate " .. CandidateIdentityString .. " at target distance " .. string.format("%.1f", CandidateData.distance or -1) .. " | threat=" .. tostring(CandidateData.isAimingThreat) .. " | vis=" .. tostring(IsEffectiveVisibleCheckEnabled()), false)
+			end
 		else
 			UpdateDebugStatus("no candidate | vis=" .. tostring(IsEffectiveVisibleCheckEnabled()) .. " line=" .. tostring(ShowTargetLineBoolean) .. " maxDist=" .. tostring(MaxDistanceNumber) .. " live=" .. tostring(TargetSearchResultTable.liveCharacterCount) .. " parts=" .. tostring(TargetSearchResultTable.totalTargetablePartCount))
-			DebugLog("candidate-missing", "Target search found no candidate. Mouse target=" .. SafeDebugName(MouseOverPartInstance) .. " | vis=" .. tostring(IsEffectiveVisibleCheckEnabled()) .. " | line=" .. tostring(ShowTargetLineBoolean) .. " | maxDist=" .. tostring(MaxDistanceNumber) .. " | live=" .. tostring(TargetSearchResultTable.liveCharacterCount) .. " | parts=" .. tostring(TargetSearchResultTable.totalTargetablePartCount) .. " | preferredThreat=" .. GetCharacterModelDebugName(TargetSearchResultTable.preferredAimingThreatCharacter) .. " | threatScore=" .. string.format("%.1f", TargetSearchResultTable.preferredAimingThreatScore or -1) .. " | rejects=" .. GetRejectCountsSummary(), false)
+			if DebugModeEnabledBoolean then
+				DebugLog("candidate-missing", "Target search found no candidate. Mouse target=" .. SafeDebugName(MouseOverPartInstance) .. " | vis=" .. tostring(IsEffectiveVisibleCheckEnabled()) .. " | line=" .. tostring(ShowTargetLineBoolean) .. " | maxDist=" .. tostring(MaxDistanceNumber) .. " | live=" .. tostring(TargetSearchResultTable.liveCharacterCount) .. " | parts=" .. tostring(TargetSearchResultTable.totalTargetablePartCount) .. " | preferredThreat=" .. GetCharacterModelDebugName(TargetSearchResultTable.preferredAimingThreatCharacter) .. " | threatScore=" .. string.format("%.1f", TargetSearchResultTable.preferredAimingThreatScore or -1) .. " | rejects=" .. GetRejectCountsSummary(), false)
+			end
 		end
 
 		if not CandidateData and FallbackIndicatorData and FallbackIndicatorData.part and FallbackIndicatorData.screen then
 			local FallbackIdentityString = GetTargetIdentity(FallbackIndicatorData.player, FallbackIndicatorData.character, FallbackIndicatorData.part)
-			DebugLog("indicator-fallback", "Using off-FOV indicator fallback for " .. FallbackIdentityString .. " at screen distance " .. string.format("%.1f", FallbackIndicatorData.distance or -1), false)
+			if DebugModeEnabledBoolean then
+				DebugLog("indicator-fallback", "Using off-FOV indicator fallback for " .. FallbackIdentityString .. " at screen distance " .. string.format("%.1f", FallbackIndicatorData.distance or -1), false)
+			end
 		end
 	end
 
@@ -409,7 +417,9 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 	end
 
 	if not CurrentTargetValidBoolean and not FinalTargetPartInstance then
-		DebugLog("target-cleared", "Clearing current target because no valid target or candidate exists", false)
+		if DebugModeEnabledBoolean then
+			DebugLog("target-cleared", "Clearing current target because no valid target or candidate exists", false)
+		end
 		ResetNormalHookHitChanceDecision()
 		CurrentTargetPartInstance = nil
 		CurrentTargetCharacterModel = nil
@@ -438,7 +448,9 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 			if FinalTargetScreenPositionVector2 then
 				LockedDistanceNumber = (FinalTargetScreenPositionVector2 - MouseLocationVector2).Magnitude
 			end
-			DebugLog("target-locked", "Locked target " .. FinalIdentityString .. " | target distance=" .. string.format("%.1f", LockedDistanceNumber), true)
+			if DebugModeEnabledBoolean then
+				DebugLog("target-locked", "Locked target " .. FinalIdentityString .. " | target distance=" .. string.format("%.1f", LockedDistanceNumber), true)
+			end
 			ResetNormalHookHitChanceDecision()
 			CurrentTargetPartInstance = FinalTargetPartInstance
 			CurrentTargetCharacterModel = FinalTargetCharacterModel
@@ -481,7 +493,9 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 		TargetLine.Visible = true
 		local IndicatorIdentityString = GetTargetIdentity(CurrentTargetPlayerObject, IndicatorCharacterModel, IndicatorPartInstance)
 		UpdateDebugStatus("line draw=" .. IndicatorIdentityString)
-		DebugLog("line-drawing", "Drawing target line to " .. IndicatorIdentityString .. " at " .. tostring(IndicatorScreenPositionVector2), false)
+		if DebugModeEnabledBoolean then
+			DebugLog("line-drawing", "Drawing target line to " .. IndicatorIdentityString .. " at " .. tostring(IndicatorScreenPositionVector2), false)
+		end
 		local CubeCFrame = IndicatorCubeCFrame or IndicatorPartInstance.CFrame
 		local CubeSize = IndicatorCubeSize or GetCubeSize(IndicatorPartInstance)
 		UpdateTargetCube(CubeCFrame, CubeSize, IndicatorPointVector3)
@@ -506,7 +520,9 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 		end
 		local HiddenReasonString = table.concat(HiddenReasonParts, ", ")
 		UpdateDebugStatus("line hidden=" .. HiddenReasonString)
-		DebugLog("line-hidden", "Target line hidden because " .. HiddenReasonString .. " | current=" .. SafeDebugName(CurrentTargetPartInstance) .. " | mouse target=" .. SafeDebugName(MouseOverPartInstance), false)
+		if DebugModeEnabledBoolean then
+			DebugLog("line-hidden", "Target line hidden because " .. HiddenReasonString .. " | current=" .. SafeDebugName(CurrentTargetPartInstance) .. " | mouse target=" .. SafeDebugName(MouseOverPartInstance), false)
+		end
 	end
 
 	if CurrentTargetPartInstance and IsCharacterAlive(CurrentTargetCharacterModel) then

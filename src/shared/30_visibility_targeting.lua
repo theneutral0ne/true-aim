@@ -7,6 +7,42 @@ local function IsGlassVisibilityPart(PartInstance)
 	return HitFunctionValue == "Glass"
 end
 
+local VisibilityRaycastBaseParamsFrameId = -1
+local VisibilityRaycastBaseParamsValue = nil
+local LowercaseNameCacheTable = {}
+local HeadLikePartNameCacheTable = {}
+
+local function GetLowercaseCachedName(NameString)
+	if type(NameString) ~= "string" then
+		return ""
+	end
+
+	local CachedLowercaseNameString = LowercaseNameCacheTable[NameString]
+	if CachedLowercaseNameString then
+		return CachedLowercaseNameString
+	end
+
+	CachedLowercaseNameString = string.lower(NameString)
+	LowercaseNameCacheTable[NameString] = CachedLowercaseNameString
+	return CachedLowercaseNameString
+end
+
+local function IsHeadLikeTargetPart(PartInstance)
+	local PartNameString = PartInstance and PartInstance.Name or nil
+	if type(PartNameString) ~= "string" then
+		return false
+	end
+
+	local CachedHeadLikeBoolean = HeadLikePartNameCacheTable[PartNameString]
+	if CachedHeadLikeBoolean ~= nil then
+		return CachedHeadLikeBoolean
+	end
+
+	local HeadLikeBoolean = string.find(GetLowercaseCachedName(PartNameString), "head", 1, true) ~= nil
+	HeadLikePartNameCacheTable[PartNameString] = HeadLikeBoolean
+	return HeadLikeBoolean
+end
+
 local function CloneRaycastParamsWithIgnoredInstances(BaseRaycastParamsObject, ExtraIgnoredInstancesTable)
 	local RaycastParamsObject = RaycastParams.new()
 	if BaseRaycastParamsObject then
@@ -42,19 +78,24 @@ local function CloneRaycastParamsWithIgnoredInstances(BaseRaycastParamsObject, E
 end
 
 local function GetVisibilityRaycastBaseParams()
+	local FrameIdNumber = tonumber(CurrentFrameSequenceNumber) or 0
+	if VisibilityRaycastBaseParamsFrameId == FrameIdNumber and VisibilityRaycastBaseParamsValue then
+		return VisibilityRaycastBaseParamsValue
+	end
+
 	if IsBloodZonePlaceBoolean and ShieldModeRuntimeTable.GetCurrentLocalGunRaycastParams then
-		local LocalCharacterModel = ResolveCharacterModelForPlayer(LocalPlayer)
+		local LocalCharacterModel = CurrentFrameLocalCharacterReadyBoolean and CurrentFrameLocalCharacterModel or ResolveCharacterModelForPlayer(LocalPlayer)
 		local BaseRaycastParamsObject = ShieldModeRuntimeTable.GetCurrentLocalGunRaycastParams(LocalCharacterModel)
 		if BaseRaycastParamsObject then
+			VisibilityRaycastBaseParamsFrameId = FrameIdNumber
+			VisibilityRaycastBaseParamsValue = BaseRaycastParamsObject
 			return BaseRaycastParamsObject
 		end
 	end
 
+	VisibilityRaycastBaseParamsFrameId = FrameIdNumber
+	VisibilityRaycastBaseParamsValue = VisibilityRaycastParams
 	return VisibilityRaycastParams
-end
-
-local function CreateVisibilityRaycastParams(ExtraIgnoredInstancesTable)
-	return CloneRaycastParamsWithIgnoredInstances(GetVisibilityRaycastBaseParams(), ExtraIgnoredInstancesTable)
 end
 
 local function DoesSegmentIntersectPartBounds(SegmentStartVector3, SegmentEndVector3, PartInstance)
@@ -107,12 +148,25 @@ local function IsTargetPointBlockedByMetalShield(TargetPositionVector3, Characte
 		return false
 	end
 
+	local VisibilityOriginVector3 = CurrentVisibilityOriginVector3 or Camera.CFrame.Position
+	local ShieldPartsTable = ShieldModeRuntimeTable.GetBloodZoneShieldVisibleParts
+		and ShieldModeRuntimeTable.GetBloodZoneShieldVisibleParts(CharacterModel) or nil
+	if type(ShieldPartsTable) == "table" then
+		for _, ShieldPartInstance in ipairs(ShieldPartsTable) do
+			if ShieldPartInstance.Parent
+				and ShieldPartInstance.Transparency < 0.95
+				and DoesSegmentIntersectPartBounds(VisibilityOriginVector3, TargetPositionVector3, ShieldPartInstance) then
+				return true
+			end
+		end
+		return false
+	end
+
 	local MetalShieldTool = GetBloodZoneMetalShieldTool(CharacterModel)
 	if not MetalShieldTool then
 		return false
 	end
 
-	local VisibilityOriginVector3 = CurrentVisibilityOriginVector3 or Camera.CFrame.Position
 	for _, DescendantInstance in ipairs(MetalShieldTool.GetDescendants(MetalShieldTool)) do
 		if DescendantInstance.IsA(DescendantInstance, "BasePart")
 			and DescendantInstance.Transparency < 0.95
@@ -136,20 +190,23 @@ RaycastBetweenIgnoringGlass = function(OriginVector3, TargetPositionVector3, Ext
 	end
 
 	local DirectionUnitVector3 = FullDirectionVector3.Unit
-	local IgnoredInstancesTable = {}
-	if ExtraIgnoredInstancesTable then
-		for _, IgnoredInstance in ipairs(ExtraIgnoredInstancesTable) do
-			AppendUniqueIgnoredInstance(IgnoredInstancesTable, IgnoredInstance)
-		end
-	end
+	local BaseRaycastParamsObject = GetVisibilityRaycastBaseParams()
+	local MutableIgnoredInstancesTable = nil
+	local HasExtraIgnoredInstancesBoolean = ExtraIgnoredInstancesTable and #ExtraIgnoredInstancesTable > 0
 	local CurrentOriginVector3 = OriginVector3
 	local RemainingDistanceNumber = FullDistanceNumber
 
 	for _ = 1, 16 do
+		local ActiveIgnoredInstancesTable = MutableIgnoredInstancesTable
+		if not ActiveIgnoredInstancesTable and HasExtraIgnoredInstancesBoolean then
+			ActiveIgnoredInstancesTable = ExtraIgnoredInstancesTable
+		end
+		local RaycastParamsObject = ActiveIgnoredInstancesTable and CloneRaycastParamsWithIgnoredInstances(BaseRaycastParamsObject, ActiveIgnoredInstancesTable)
+			or BaseRaycastParamsObject
 		local RaycastResult = RunUnredirectedWorkspaceRaycast(
 			CurrentOriginVector3,
 			DirectionUnitVector3 * RemainingDistanceNumber,
-			CreateVisibilityRaycastParams(IgnoredInstancesTable)
+			RaycastParamsObject
 		)
 
 		if not RaycastResult then
@@ -160,7 +217,15 @@ RaycastBetweenIgnoringGlass = function(OriginVector3, TargetPositionVector3, Ext
 			return RaycastResult
 		end
 
-		AppendUniqueIgnoredInstance(IgnoredInstancesTable, RaycastResult.Instance)
+		if not MutableIgnoredInstancesTable then
+			MutableIgnoredInstancesTable = {}
+			if HasExtraIgnoredInstancesBoolean then
+				for _, IgnoredInstance in ipairs(ExtraIgnoredInstancesTable) do
+					AppendUniqueIgnoredInstance(MutableIgnoredInstancesTable, IgnoredInstance)
+				end
+			end
+		end
+		AppendUniqueIgnoredInstance(MutableIgnoredInstancesTable, RaycastResult.Instance)
 		CurrentOriginVector3 = RaycastResult.Position + DirectionUnitVector3 * 0.01
 		RemainingDistanceNumber = FullDistanceNumber - (CurrentOriginVector3 - OriginVector3).Magnitude
 		if RemainingDistanceNumber <= 0.001 then
@@ -255,7 +320,7 @@ IsCharacterForceFieldProtected = function(CharacterModel, Humanoid)
 	return false
 end
 
-local function IsCharacterAlive(CharacterModel)
+local function ComputeCharacterAlive(CharacterModel)
 	if not CharacterModel or not CharacterModel.Parent then
 		return false
 	end
@@ -306,6 +371,21 @@ local function IsCharacterAlive(CharacterModel)
 	end
 
 	return false
+end
+
+local function IsCharacterAlive(CharacterModel)
+	if not CharacterModel then
+		return false
+	end
+
+	local CachedAliveValue = FrameCharacterAliveCacheTable[CharacterModel]
+	if CachedAliveValue ~= nil then
+		return CachedAliveValue
+	end
+
+	local AliveBoolean = ComputeCharacterAlive(CharacterModel)
+	FrameCharacterAliveCacheTable[CharacterModel] = AliveBoolean
+	return AliveBoolean
 end
 
 local function GetProjectileArcVisibleTargetData(PartInstance, CharacterModel)
@@ -507,7 +587,14 @@ function ShieldModeRuntimeTable.ResolveEffectiveTargetGeometryForPart(PartInstan
 		return TargetPointVector3, CubeCFrame, CubeSize, EffectivePartInstance
 	end
 
-	local VisibleTargetData = GetVisiblePointForPart(PartInstance, CharacterModel, MouseLocationVector2)
+	local CachedVisibleTargetData = FrameVisiblePointCacheTable[PartInstance]
+	local VisibleTargetData = CachedVisibleTargetData
+	if CachedVisibleTargetData == nil then
+		VisibleTargetData = GetVisiblePointForPart(PartInstance, CharacterModel, MouseLocationVector2)
+		FrameVisiblePointCacheTable[PartInstance] = VisibleTargetData or false
+	elseif CachedVisibleTargetData == false then
+		VisibleTargetData = nil
+	end
 	if not VisibleTargetData then
 		return ShieldModeRuntimeTable.RejectTargetDataForPart(
 			"visible",
@@ -670,8 +757,7 @@ function ShieldModeRuntimeTable.GetBestTargetForCharacter(CharacterModel, MouseL
 			continue
 		end
 
-		local PartNameLowerString = string.lower(PartInstance.Name)
-		local IsHeadBoolean = string.find(PartNameLowerString, "head") ~= nil
+		local IsHeadBoolean = IsHeadLikeTargetPart(PartInstance)
 		local TargetSortDistanceNumber = GetTargetSortDistance(TargetData)
 		if IsHeadBoolean and TargetSortDistanceNumber < ClosestHeadDistanceNumber then
 			ClosestHeadDistanceNumber = TargetSortDistanceNumber
@@ -787,7 +873,9 @@ function ShieldModeRuntimeTable.RunTargetSearch(LocalCharacterModel, MouseLocati
 		local TargetableParts = GetTargetableParts(CharacterModel)
 		SearchResultTable.totalTargetablePartCount = SearchResultTable.totalTargetablePartCount + #TargetableParts
 		if #TargetableParts == 0 then
-			DebugLog("no-parts-" .. CharacterModel.Name, "Found no targetable parts for " .. CharacterModel.Name, false)
+			if DebugModeEnabledBoolean then
+				DebugLog("no-parts-" .. CharacterModel.Name, "Found no targetable parts for " .. CharacterModel.Name, false)
+			end
 		end
 
 		for _, PartInstance in ipairs(TargetableParts) do
@@ -809,8 +897,7 @@ function ShieldModeRuntimeTable.RunTargetSearch(LocalCharacterModel, MouseLocati
 				continue
 			end
 
-			local PartNameLowerString = string.lower(PartInstance.Name)
-			local IsHeadBoolean = string.find(PartNameLowerString, "head") ~= nil
+			local IsHeadBoolean = IsHeadLikeTargetPart(PartInstance)
 			local TargetSortDistanceNumber = GetTargetSortDistance(TargetData)
 			local PriorityPlayerBoolean = PlayerListRuntimeTable.IsPriorityPlayer(PlayerObject)
 			local AimingThreatCharacterBoolean = SearchResultTable.preferredAimingThreatCharacter ~= nil

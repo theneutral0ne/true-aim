@@ -1237,30 +1237,6 @@ local function GetFallbackFlatAimDirectionVector3(LocalCharacterModel, Reference
 	return Vector3.new(0, 0, -1)
 end
 
-local function BuildFallbackSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, TargetPositionVector3)
-	local HeadPartInstance = LocalCharacterModel and GetCharacterHeadPart(LocalCharacterModel) or nil
-	local RootPartInstance = LocalCharacterModel and GetCharacterRootPart(LocalCharacterModel) or nil
-	local ActiveCamera = WorkspaceService.CurrentCamera or Camera
-	local MuzzleOriginVector3 = ShieldModeRuntimeTable.GetCurrentLocalGunMuzzleOrigin
-		and ShieldModeRuntimeTable.GetCurrentLocalGunMuzzleOrigin(LocalCharacterModel) or nil
-	local HitOriginVector3 = MuzzleOriginVector3
-		or (HeadPartInstance and HeadPartInstance.Position)
-		or (RootPartInstance and RootPartInstance.Position)
-		or (ActiveCamera and ActiveCamera.CFrame.Position)
-	if typeof(HitOriginVector3) ~= "Vector3" then
-		return nil
-	end
-
-	local FlatDirectionVector3 = GetFallbackFlatAimDirectionVector3(LocalCharacterModel, ReferenceDirectionVector3, TargetPositionVector3)
-	local ShotDirectionVector3 = (Vector3.new(FlatDirectionVector3.X, 1, FlatDirectionVector3.Z)).Unit
-	return {
-		direction = ShotDirectionVector3,
-		hitPosition = HitOriginVector3 + ShotDirectionVector3 * SkyAimHitDistanceNumber,
-		facingDirection = FlatDirectionVector3,
-		priority = -1,
-	}
-end
-
 local function BuildSkyAimCandidateFacingDirection(BaseFlatDirectionVector3, YawRotationCFrame)
 	local FlatDirectionVector3 = Vector3.new(BaseFlatDirectionVector3.X, 0, BaseFlatDirectionVector3.Z)
 	if FlatDirectionVector3.Magnitude <= 0.001 then
@@ -1394,9 +1370,8 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 		TargetPositionVector3, TargetCharacterModel, TargetPartInstance = ResolveCurrentSkyTargetData()
 	end
 	local BaseFlatDirectionVector3 = GetFallbackFlatAimDirectionVector3(LocalCharacterModel, ReferenceDirectionVector3, TargetPositionVector3)
-	local FallbackSolutionTable = BuildFallbackSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, TargetPositionVector3)
 	if typeof(TargetPositionVector3) ~= "Vector3" then
-		return FallbackSolutionTable
+		return nil
 	end
 
 	local HeadPositionVector3 = HeadPartInstance.Position
@@ -1405,9 +1380,51 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 	if typeof(MuzzleOriginVector3) ~= "Vector3" then
 		MuzzleOriginVector3 = HeadPositionVector3
 	end
+	local CurrentLocalGunRaycastParamsObject = ShieldModeRuntimeTable.GetCurrentLocalGunRaycastParams
+		and ShieldModeRuntimeTable.GetCurrentLocalGunRaycastParams(LocalCharacterModel) or nil
+	local CurrentLocalGunCheckParamsObject = ShieldModeRuntimeTable.GetCurrentLocalGunCheckParams
+		and ShieldModeRuntimeTable.GetCurrentLocalGunCheckParams(LocalCharacterModel) or nil
 	if not SkipCacheBoolean then
 		local CachedSolutionTable = ShieldModeRuntimeTable.skyAimSolutionCache
+		local CachedSolutionValue = CachedSolutionTable and CachedSolutionTable.solution or nil
+		local CachedSolutionCanBeReusedBoolean = true
+		if CachedSolutionValue then
+			local CachedPriorityNumber = CachedSolutionValue.priority or 0
+			if CachedPriorityNumber < 2 then
+				CachedSolutionCanBeReusedBoolean = false
+			elseif TargetCharacterModel then
+				CachedSolutionCanBeReusedBoolean = false
+				local CachedMuzzleOriginVector3 = CachedSolutionValue.muzzleOrigin or CachedSolutionTable.muzzleOrigin
+				local CachedDirectionVector3 = CachedSolutionValue.direction
+				if typeof(CachedMuzzleOriginVector3) == "Vector3"
+					and typeof(CachedDirectionVector3) == "Vector3"
+					and CachedDirectionVector3.Magnitude > 0.001 then
+					if CachedPriorityNumber >= 3 and CurrentLocalGunRaycastParamsObject then
+						local CachedTargetDistanceNumber = (TargetPositionVector3 - CachedMuzzleOriginVector3).Magnitude
+						if CachedTargetDistanceNumber > 0.001 then
+							local CachedRaycastResult = RunUnredirectedWorkspaceRaycast(
+								CachedMuzzleOriginVector3,
+								CachedDirectionVector3.Unit * math.max(CachedTargetDistanceNumber + 6, 12),
+								CurrentLocalGunRaycastParamsObject
+							)
+							CachedSolutionCanBeReusedBoolean = IsRaycastResultTargetHit(CachedRaycastResult, TargetCharacterModel)
+						end
+					elseif CachedPriorityNumber >= 2
+						and CachedSolutionValue.headPosition
+						and CurrentLocalGunCheckParamsObject then
+							local CachedHeadRaycastResult = RunUnredirectedWorkspaceRaycast(
+								CachedSolutionValue.headPosition,
+								CachedDirectionVector3.Unit * 3.5,
+								CurrentLocalGunCheckParamsObject
+							)
+							CachedSolutionCanBeReusedBoolean = CachedHeadRaycastResult == nil
+						end
+					end
+				end
+			end
+		end
 		if CachedSolutionTable
+			and CachedSolutionCanBeReusedBoolean
 			and (tick() - (CachedSolutionTable.time or 0)) < SkyAimSolutionCacheDurationNumber
 			and CachedSolutionTable.localCharacter == LocalCharacterModel
 			and CachedSolutionTable.targetCharacter == TargetCharacterModel
@@ -1422,10 +1439,6 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 		end
 	end
 
-	local CurrentLocalGunRaycastParamsObject = ShieldModeRuntimeTable.GetCurrentLocalGunRaycastParams
-		and ShieldModeRuntimeTable.GetCurrentLocalGunRaycastParams(LocalCharacterModel) or nil
-	local CurrentLocalGunCheckParamsObject = ShieldModeRuntimeTable.GetCurrentLocalGunCheckParams
-		and ShieldModeRuntimeTable.GetCurrentLocalGunCheckParams(LocalCharacterModel) or nil
 	local TargetDistanceNumber = (TargetPositionVector3 - MuzzleOriginVector3).Magnitude
 	local AlignmentToleranceNumber = GetSkyAimAlignmentTolerance(TargetPartInstance)
 	local BestSolutionTable = nil
@@ -1454,6 +1467,8 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 		local AbsoluteYawNumber = math.abs(YawDegreeNumber)
 		local CandidateSolutionTable = {
 			direction = CandidateDirectionVector3,
+			muzzleOrigin = CandidateMuzzleOriginVector3,
+			headPosition = CandidateHeadPositionVector3,
 			hitPosition = CandidateMuzzleOriginVector3 + CandidateDirectionVector3 * SkyAimHitDistanceNumber,
 			facingDirection = FlatFacingDirectionVector3,
 			missDistance = MissDistanceNumber,
@@ -1572,7 +1587,7 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 	end
 
 	local FinalSolutionTable = BestSolutionTable
-	if FinalSolutionTable and (FinalSolutionTable.priority or 0) <= 0 then
+	if FinalSolutionTable and (FinalSolutionTable.priority or 0) < 2 then
 		FinalSolutionTable = nil
 	end
 
@@ -1584,24 +1599,26 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 	end
 
 	if not FinalSolutionTable then
-		if BestApproximateSolutionTable and (BestApproximateSolutionTable.missDistance or math.huge) <= (AlignmentToleranceNumber * 4) then
+		if BestApproximateSolutionTable
+			and (BestApproximateSolutionTable.priority or 0) > 0
+			and (BestApproximateSolutionTable.missDistance or math.huge) <= (AlignmentToleranceNumber * 4) then
 			FinalSolutionTable = BestApproximateSolutionTable
-		else
-			FinalSolutionTable = FallbackSolutionTable
 		end
 	end
 
 	if FinalSolutionTable then
-		TraceLog(
-			"sky-aim-final",
-			"pitch=" .. tostring(FinalSolutionTable.pitch)
-				.. " | yaw=" .. tostring(FinalSolutionTable.yaw or 0)
-				.. " | priority=" .. tostring(FinalSolutionTable.priority)
-				.. " | miss=" .. string.format("%.2f", FinalSolutionTable.missDistance or -1)
-				.. " | facing=" .. FormatDebugVector3(FinalSolutionTable.facingDirection)
-				.. " | dir=" .. FormatDebugVector3(FinalSolutionTable.direction),
-			false
-		)
+		if TraceModeEnabledBoolean then
+			TraceLog(
+				"sky-aim-final",
+				"pitch=" .. tostring(FinalSolutionTable.pitch)
+					.. " | yaw=" .. tostring(FinalSolutionTable.yaw or 0)
+					.. " | priority=" .. tostring(FinalSolutionTable.priority)
+					.. " | miss=" .. string.format("%.2f", FinalSolutionTable.missDistance or -1)
+					.. " | facing=" .. FormatDebugVector3(FinalSolutionTable.facingDirection)
+					.. " | dir=" .. FormatDebugVector3(FinalSolutionTable.direction),
+				false
+			)
+		end
 	end
 
 	if not SkipCacheBoolean then
