@@ -5143,6 +5143,7 @@ GetSearchableCharacterEntries = function(LocalCharacterModel, TeamCheckEnabledBo
 	CachedSearchableCharacterEntriesTimeNumber = NowNumber
 	return CharacterEntries
 end
+do
 local function CreateSectionHeader(SectionTitleString, YOffsetNumber)
 	local HeaderFrame = Instance.new("Frame")
 	HeaderFrame.Name = SectionTitleString .. "HeaderFrame"
@@ -5584,7 +5585,7 @@ local function UpdateHookHitChanceSliderAppearance()
 	HookHitChanceSliderKnobFrame.Position = UDim2.new(RatioNumber, -KnobWidthNumber / 2, 0.5, -HookHitChanceSliderKnobFrame.AbsoluteSize.Y / 2)
 end
 
-local function GetCurrentLockKeyMode()
+function GetCurrentLockKeyMode()
 	return LockKeyModesTable[LockKeyModeIndexNumber] or "RMB"
 end
 
@@ -5679,7 +5680,7 @@ local function UpdateSillySkyVisibilityButtonAppearance()
 	end
 end
 
-local function RefreshBloodZoneBehaviorButtons()
+function RefreshBloodZoneBehaviorButtons()
 	UpdateHeadshotButtonAppearance()
 	UpdateAutoFireButtonAppearance()
 	UpdateVisibleCheckButtonAppearance()
@@ -6191,7 +6192,7 @@ SetTargetCubeVisible = function(IsVisible)
 	end
 end
 
-local function UpdateTargetCube(CubeCFrame, CubeSize, SurfacePointVector3)
+function UpdateTargetCube(CubeCFrame, CubeSize, SurfacePointVector3)
 	local WorldCorners = GetCubeCorners(CubeCFrame, CubeSize)
 	local ScreenCorners = {}
 	local OnScreenFlags = {}
@@ -6215,7 +6216,7 @@ local function UpdateTargetCube(CubeCFrame, CubeSize, SurfacePointVector3)
 		end
 	end
 end
-
+end
 local function IsGlassVisibilityPart(PartInstance)
 	if not PartInstance then
 		return false
