@@ -202,8 +202,8 @@ local function IsVisible(TargetPositionVector3, CharacterModel, PartInstance)
 		and SillySkyAimEnabledBoolean
 		and not ShieldModeEnabledBoolean
 		and not ShieldModeRuntimeTable.IsProjectileWeaponProfile(CurrentWeaponBallisticsProfileTable) then
-		local LocalCharacterModel = ResolveCharacterModelForPlayer(LocalPlayer)
-		if LocalCharacterModel and LocalCharacterModel.Parent then
+		local LocalCharacterModel = CurrentFrameLocalCharacterModel
+		if CurrentFrameLocalCharacterReadyBoolean and LocalCharacterModel and LocalCharacterModel.Parent then
 			local EquippedTool = ShieldModeRuntimeTable.GetEquippedTool and ShieldModeRuntimeTable.GetEquippedTool(LocalCharacterModel) or nil
 			local SkyAimSolutionTable = ResolveSkyAimSolution(
 				LocalCharacterModel,
@@ -841,7 +841,12 @@ function ShieldModeRuntimeTable.RunTargetSearch(LocalCharacterModel, MouseLocati
 	end
 
 	if not IsSillyModeBehaviorActive() then
-		SearchResultTable.candidate = ShieldModeRuntimeTable.ReadTargetSelectionSlot(ClosestSelectionSlotTable, false)
+		if IsEffectiveHeadshotPriorityEnabled() then
+			SearchResultTable.candidate = ShieldModeRuntimeTable.ReadTargetSelectionSlot(ClosestHeadSelectionSlotTable, false)
+		end
+		if not SearchResultTable.candidate then
+			SearchResultTable.candidate = ShieldModeRuntimeTable.ReadTargetSelectionSlot(ClosestSelectionSlotTable, false)
+		end
 		return SearchResultTable
 	end
 
@@ -940,4 +945,3 @@ function ShieldModeRuntimeTable.ShouldSkipBloodZoneProjectileRaycastRedirect(Loc
 	local ProjectileRaycastParamsObject = ActiveLocalGunTable and ActiveLocalGunTable.RayParams or nil
 	return ProjectileRaycastParamsObject ~= nil and RaycastParamsObject == ProjectileRaycastParamsObject
 end
-

@@ -1,88 +1,116 @@
-ShieldModeRuntimeTable.oldNamecall = hookmetamethod(game, "__namecall", function(Self, ...)
-	local Args = { ... }
-	local Method = getnamecallmethod()
-	if InternalAimbotRaycastBypassDepth > 0
-		and (Method == "Raycast" or Method == "FindPartOnRayWithIgnoreList" or Method == "FindPartOnRay") then
-		return ShieldModeRuntimeTable.oldNamecall(Self, ...)
+local function ClearMutableTable(TableObject)
+	if type(TableObject) ~= "table" then
+		return {}
 	end
 
-	local LocalCharacterModel = ResolveCharacterModelForPlayer(LocalPlayer)
-	local LocalCharacterReadyBoolean = IsLocalCharacterReadyForAimbot(LocalCharacterModel)
-
-	if LocalCharacterReadyBoolean and IsEffectiveHookMethodEnabled() and CurrentTargetPartInstance and CurrentTargetCharacterModel and CurrentTargetPartInstance.Parent then
-		if Method == "Raycast" and Self == WorkspaceService then
-			local Origin = Args[1]
-			local Direction = Args[2]
-			local RaycastParamsObject = Args[3]
-
-			local ShouldRedirect = true
-			if AimbotRequireRmbBoolean then
-				ShouldRedirect = ShieldModeRuntimeTable.IsLockKeyHeld()
-			end
-			if ShouldRedirect then
-				ShouldRedirect = ShouldApplyNormalHookHitChance()
-			end
-
-			if ShouldRedirect
-				and CurrentTargetPartInstance
-				and typeof(Origin) == "Vector3"
-				and typeof(Direction) == "Vector3"
-				and Direction.Magnitude > 0.001 then
-				local TargetPosition = GetCurrentEffectiveAimPointVector3() or CurrentTargetPartInstance.Position
-				local ActiveFiringLocalGunTable = ShieldModeRuntimeTable.activeFiringLocalGun
-				if IsBloodZonePlaceBoolean
-					and type(ActiveFiringLocalGunTable) == "table"
-					and RaycastParamsObject == ActiveFiringLocalGunTable.CheckParams then
-					local RedirectOriginVector3, RedirectDirectionVector3 = ShieldModeRuntimeTable.GetFireGunMuzzleRedirect(
-						ActiveFiringLocalGunTable,
-						TargetPosition,
-						Origin,
-						Direction.Magnitude
-					)
-					if RedirectOriginVector3 and RedirectDirectionVector3 then
-						Args[1] = RedirectOriginVector3
-						Args[2] = RedirectDirectionVector3
-					end
-				elseif ShieldModeRuntimeTable.ShouldSkipBloodZoneProjectileRaycastRedirect(LocalCharacterModel, RaycastParamsObject) then
-					return ShieldModeRuntimeTable.oldNamecall(Self, ...)
-				else
-					Args[2] = (TargetPosition - Origin).Unit * Direction.Magnitude
-				end
-			end
-
-			return ShieldModeRuntimeTable.oldNamecall(Self, unpack(Args))
-		elseif Method == "FindPartOnRayWithIgnoreList" or Method == "FindPartOnRay" then
-			local RayObject = Args[1]
-
-			local ShouldRedirect = true
-			if AimbotRequireRmbBoolean then
-				ShouldRedirect = ShieldModeRuntimeTable.IsLockKeyHeld()
-			end
-			if ShouldRedirect then
-				ShouldRedirect = ShouldApplyNormalHookHitChance()
-			end
-
-			if ShouldRedirect and CurrentTargetPartInstance and RayObject then
-				local TargetPosition = GetCurrentEffectiveAimPointVector3() or CurrentTargetPartInstance.Position
-				local NewDirection = (TargetPosition - RayObject.Origin).Unit * RayObject.Direction.Magnitude
-				Args[1] = Ray.new(RayObject.Origin, NewDirection)
-			end
-
-			return ShieldModeRuntimeTable.oldNamecall(Self, unpack(Args))
+	if type(table.clear) == "function" then
+		table.clear(TableObject)
+	else
+		for Key in pairs(TableObject) do
+			TableObject[Key] = nil
 		end
 	end
 
-	return ShieldModeRuntimeTable.oldNamecall(Self, ...)
+	return TableObject
+end
+
+ShieldModeRuntimeTable.oldNamecall = hookmetamethod(game, "__namecall", function(Self, ...)
+	local Method = getnamecallmethod()
+	local IsWorkspaceRaycastMethodBoolean = Method == "Raycast" and Self == WorkspaceService
+	local IsLegacyRayMethodBoolean = Method == "FindPartOnRayWithIgnoreList" or Method == "FindPartOnRay"
+	if InternalAimbotRaycastBypassDepth > 0
+		and (IsWorkspaceRaycastMethodBoolean or IsLegacyRayMethodBoolean) then
+		return ShieldModeRuntimeTable.oldNamecall(Self, ...)
+	end
+
+	if not IsWorkspaceRaycastMethodBoolean and not IsLegacyRayMethodBoolean then
+		return ShieldModeRuntimeTable.oldNamecall(Self, ...)
+	end
+
+	if not IsEffectiveHookMethodEnabled()
+		or not CurrentTargetPartInstance
+		or not CurrentTargetCharacterModel
+		or not CurrentTargetPartInstance.Parent then
+		return ShieldModeRuntimeTable.oldNamecall(Self, ...)
+	end
+
+	local LocalCharacterModel = CurrentFrameLocalCharacterModel
+	local LocalCharacterReadyBoolean = CurrentFrameLocalCharacterReadyBoolean
+	if not LocalCharacterReadyBoolean or not LocalCharacterModel or not LocalCharacterModel.Parent then
+		LocalCharacterModel = ResolveCharacterModelForPlayer(LocalPlayer)
+		LocalCharacterReadyBoolean = IsLocalCharacterReadyForAimbot(LocalCharacterModel)
+		if not LocalCharacterReadyBoolean then
+			return ShieldModeRuntimeTable.oldNamecall(Self, ...)
+		end
+	end
+
+	local ShouldRedirect = true
+	if AimbotRequireRmbBoolean then
+		ShouldRedirect = ShieldModeRuntimeTable.IsLockKeyHeld()
+	end
+	if ShouldRedirect then
+		ShouldRedirect = ShouldApplyNormalHookHitChance()
+	end
+	if not ShouldRedirect then
+		return ShieldModeRuntimeTable.oldNamecall(Self, ...)
+	end
+
+	local Args = { ... }
+	if IsWorkspaceRaycastMethodBoolean then
+		local Origin = Args[1]
+		local Direction = Args[2]
+		local RaycastParamsObject = Args[3]
+
+		if typeof(Origin) == "Vector3"
+			and typeof(Direction) == "Vector3"
+			and Direction.Magnitude > 0.001 then
+			local TargetPosition = GetCurrentEffectiveAimPointVector3() or CurrentTargetPartInstance.Position
+			local ActiveFiringLocalGunTable = ShieldModeRuntimeTable.activeFiringLocalGun
+			if IsBloodZonePlaceBoolean
+				and type(ActiveFiringLocalGunTable) == "table"
+				and RaycastParamsObject == ActiveFiringLocalGunTable.CheckParams then
+				local RedirectOriginVector3, RedirectDirectionVector3 = ShieldModeRuntimeTable.GetFireGunMuzzleRedirect(
+					ActiveFiringLocalGunTable,
+					TargetPosition,
+					Origin,
+					Direction.Magnitude
+				)
+				if RedirectOriginVector3 and RedirectDirectionVector3 then
+					Args[1] = RedirectOriginVector3
+					Args[2] = RedirectDirectionVector3
+				end
+			elseif ShieldModeRuntimeTable.ShouldSkipBloodZoneProjectileRaycastRedirect(LocalCharacterModel, RaycastParamsObject) then
+				return ShieldModeRuntimeTable.oldNamecall(Self, ...)
+			else
+				Args[2] = (TargetPosition - Origin).Unit * Direction.Magnitude
+			end
+		end
+
+		return ShieldModeRuntimeTable.oldNamecall(Self, unpack(Args))
+	end
+
+	local RayObject = Args[1]
+	if RayObject then
+		local TargetPosition = GetCurrentEffectiveAimPointVector3() or CurrentTargetPartInstance.Position
+		local NewDirection = (TargetPosition - RayObject.Origin).Unit * RayObject.Direction.Magnitude
+		Args[1] = Ray.new(RayObject.Origin, NewDirection)
+	end
+
+	return ShieldModeRuntimeTable.oldNamecall(Self, unpack(Args))
 end)
 
 RunService.RenderStepped.Connect(RunService.RenderStepped, function()
+	CurrentFrameSequenceNumber = (tonumber(CurrentFrameSequenceNumber) or 0) + 1
 	local FrameNowNumber = tick()
 	local MouseLocationVector2 = UserInputService.GetMouseLocation(UserInputService)
 	local MouseOverPartInstance = MouseObject.Target
-	FrameTargetDataCacheTable.normal = {}
-	FrameTargetDataCacheTable.ignoreFov = {}
-	FrameCharacterVelocityCacheTable = {}
+	FrameTargetDataCacheTable.normal = ClearMutableTable(FrameTargetDataCacheTable.normal)
+	FrameTargetDataCacheTable.ignoreFov = ClearMutableTable(FrameTargetDataCacheTable.ignoreFov)
+	FrameCharacterVelocityCacheTable = ClearMutableTable(FrameCharacterVelocityCacheTable)
 	CurrentWeaponBallisticsProfileTable = nil
+	CurrentFrameLocalCharacterModel = nil
+	CurrentFrameLocalCharacterReadyBoolean = false
+	ShieldModeRuntimeTable.shotSkyAimDataCache = nil
 	FovCircle.Position = MouseLocationVector2
 	if not UseHookMethodBoolean or IsSillyModeBehaviorActive() or not CurrentTargetPartInstance then
 		ResetNormalHookHitChanceDecision()
@@ -109,7 +137,9 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 	end
 
 	local LocalCharacterReadyBoolean = IsLocalCharacterReadyForAimbot(LocalCharacterModel)
-	if UseProjectilePredictionBoolean then
+	CurrentFrameLocalCharacterModel = LocalCharacterModel
+	CurrentFrameLocalCharacterReadyBoolean = LocalCharacterReadyBoolean
+	if UseProjectilePredictionBoolean and LocalCharacterReadyBoolean then
 		CurrentWeaponBallisticsProfileTable = ShieldModeRuntimeTable.ResolveCurrentWeaponBallisticsProfile(LocalCharacterModel)
 	else
 		CurrentWeaponBallisticsProfileTable = nil

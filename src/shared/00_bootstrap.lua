@@ -58,6 +58,9 @@ CurrentWeaponBallisticsProfileTable = nil
 LastFallbackIndicatorPartInstance = nil
 LastFallbackIndicatorCharacterModel = nil
 LastFallbackIndicatorPlayerObject = nil
+CurrentFrameSequenceNumber = 0
+CurrentFrameLocalCharacterModel = nil
+CurrentFrameLocalCharacterReadyBoolean = false
 
 AimbotSmoothingNumber = 0.2
 AimbotRequireRmbBoolean = true
@@ -123,4 +126,3 @@ FrameTargetDataCacheTable = {
 }
 FrameCharacterVelocityCacheTable = {}
 ObservedCharacterVelocitySampleByModelTable = setmetatable({}, { __mode = "k" })
-

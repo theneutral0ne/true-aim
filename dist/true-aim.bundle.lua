@@ -58,6 +58,9 @@ CurrentWeaponBallisticsProfileTable = nil
 LastFallbackIndicatorPartInstance = nil
 LastFallbackIndicatorCharacterModel = nil
 LastFallbackIndicatorPlayerObject = nil
+CurrentFrameSequenceNumber = 0
+CurrentFrameLocalCharacterModel = nil
+CurrentFrameLocalCharacterReadyBoolean = false
 
 AimbotSmoothingNumber = 0.2
 AimbotRequireRmbBoolean = true
@@ -123,7 +126,6 @@ FrameTargetDataCacheTable = {
 }
 FrameCharacterVelocityCacheTable = {}
 ObservedCharacterVelocitySampleByModelTable = setmetatable({}, { __mode = "k" })
-
 local GameIntegrationProfilesByPlaceIdTable = {
 	-- Keep game-specific behavior place-bound so future integrations can opt in cleanly.
 	[13955927965] = {
@@ -214,6 +216,21 @@ local ShieldModeRuntimeTable: { [string]: any } = {
 	activeLocalGun = nil,
 	activeFiringLocalGun = nil,
 	skyAimSolutionCache = nil,
+	shotSkyAimDataCache = nil,
+	currentLocalGunFrameId = 0,
+	currentLocalGunCharacter = nil,
+	currentLocalGunTool = nil,
+	currentLocalGunResolved = false,
+	currentLocalGunMuzzleOriginFrameId = 0,
+	currentLocalGunMuzzleOriginValue = nil,
+	currentLocalGunRaycastParamsFrameId = 0,
+	currentLocalGunRaycastParamsValue = nil,
+	currentLocalGunCheckParamsFrameId = 0,
+	currentLocalGunCheckParamsValue = nil,
+	currentWeaponBallisticsProfileFrameId = 0,
+	currentWeaponBallisticsProfileCharacter = nil,
+	currentWeaponBallisticsProfileLocalGun = nil,
+	currentWeaponBallisticsProfileValue = nil,
 	heldItemStateCacheDuration = 0.2,
 	GetBloodZoneHeldItemState = nil,
 }
@@ -1876,13 +1893,42 @@ function ShieldModeRuntimeTable.ResolveClientProjectilesModule()
 end
 
 function ShieldModeRuntimeTable.ResolveCurrentLocalGun(LocalCharacterModel)
-	if not IsBloodZonePlaceBoolean or not LocalCharacterModel or not LocalCharacterModel.Parent then
-		ShieldModeRuntimeTable.activeLocalGun = nil
-		return nil
-	end
-
+	local FrameIdNumber = tonumber(CurrentFrameSequenceNumber) or 0
 	local EquippedGunToolInstance = ShieldModeRuntimeTable.GetEquippedGunTool
 		and ShieldModeRuntimeTable.GetEquippedGunTool(LocalCharacterModel) or nil
+	if ShieldModeRuntimeTable.currentLocalGunResolved
+		and ShieldModeRuntimeTable.currentLocalGunFrameId == FrameIdNumber
+		and ShieldModeRuntimeTable.currentLocalGunCharacter == LocalCharacterModel
+		and ShieldModeRuntimeTable.currentLocalGunTool == EquippedGunToolInstance then
+		return ShieldModeRuntimeTable.activeLocalGun
+	end
+
+	local function FinalizeResolvedLocalGun(ResolvedLocalGunTable)
+		local PreviousLocalGunTable = ShieldModeRuntimeTable.activeLocalGun
+		ShieldModeRuntimeTable.activeLocalGun = ResolvedLocalGunTable
+		ShieldModeRuntimeTable.currentLocalGunFrameId = FrameIdNumber
+		ShieldModeRuntimeTable.currentLocalGunCharacter = LocalCharacterModel
+		ShieldModeRuntimeTable.currentLocalGunTool = EquippedGunToolInstance
+		ShieldModeRuntimeTable.currentLocalGunResolved = true
+		if PreviousLocalGunTable ~= ResolvedLocalGunTable then
+			ShieldModeRuntimeTable.currentLocalGunMuzzleOriginFrameId = 0
+			ShieldModeRuntimeTable.currentLocalGunMuzzleOriginValue = nil
+			ShieldModeRuntimeTable.currentLocalGunRaycastParamsFrameId = 0
+			ShieldModeRuntimeTable.currentLocalGunRaycastParamsValue = nil
+			ShieldModeRuntimeTable.currentLocalGunCheckParamsFrameId = 0
+			ShieldModeRuntimeTable.currentLocalGunCheckParamsValue = nil
+			ShieldModeRuntimeTable.currentWeaponBallisticsProfileFrameId = 0
+			ShieldModeRuntimeTable.currentWeaponBallisticsProfileCharacter = nil
+			ShieldModeRuntimeTable.currentWeaponBallisticsProfileLocalGun = nil
+			ShieldModeRuntimeTable.currentWeaponBallisticsProfileValue = nil
+		end
+		return ResolvedLocalGunTable
+	end
+
+	if not IsBloodZonePlaceBoolean or not LocalCharacterModel or not LocalCharacterModel.Parent then
+		return FinalizeResolvedLocalGun(nil)
+	end
+
 	local ActiveLocalGunTable = ShieldModeRuntimeTable.activeLocalGun
 	if type(ActiveLocalGunTable) == "table"
 		and type(ActiveLocalGunTable.GetBase) == "function"
@@ -1891,14 +1937,13 @@ function ShieldModeRuntimeTable.ResolveCurrentLocalGun(LocalCharacterModel)
 		and ActiveLocalGunTable.CharacterModel == LocalCharacterModel
 		and ActiveLocalGunTable.Equipped
 		and ActiveLocalGunTable.Tool == EquippedGunToolInstance then
-		return ActiveLocalGunTable
+		return FinalizeResolvedLocalGun(ActiveLocalGunTable)
 	end
 
 	local WeaponClientModuleTable = ShieldModeRuntimeTable.ResolveWeaponClientModule()
 	local LoadedWeaponsTable = WeaponClientModuleTable and WeaponClientModuleTable.LoadedWeapons or nil
 	if type(LoadedWeaponsTable) ~= "table" then
-		ShieldModeRuntimeTable.activeLocalGun = nil
-		return nil
+		return FinalizeResolvedLocalGun(nil)
 	end
 
 	if EquippedGunToolInstance then
@@ -1908,8 +1953,7 @@ function ShieldModeRuntimeTable.ResolveCurrentLocalGun(LocalCharacterModel)
 				and type(LoadedWeaponTable.GetBase) == "function"
 				and type(LoadedWeaponTable.Settings) == "table"
 				and IsSupportedBloodZoneWeaponType(LoadedWeaponTable.Settings.WeaponType) then
-				ShieldModeRuntimeTable.activeLocalGun = LoadedWeaponTable
-				return LoadedWeaponTable
+				return FinalizeResolvedLocalGun(LoadedWeaponTable)
 			end
 		end
 	end
@@ -1928,8 +1972,7 @@ function ShieldModeRuntimeTable.ResolveCurrentLocalGun(LocalCharacterModel)
 			and type(GunSettingsTable) == "table"
 			and IsSupportedBloodZoneWeaponType(GunSettingsTable.WeaponType) then
 			if GunEquippedBoolean then
-				ShieldModeRuntimeTable.activeLocalGun = LoadedWeaponTable
-				return LoadedWeaponTable
+				return FinalizeResolvedLocalGun(LoadedWeaponTable)
 			end
 
 			if not FallbackLocalGunTable then
@@ -1939,12 +1982,10 @@ function ShieldModeRuntimeTable.ResolveCurrentLocalGun(LocalCharacterModel)
 	end
 
 	if FallbackLocalGunTable then
-		ShieldModeRuntimeTable.activeLocalGun = FallbackLocalGunTable
-		return FallbackLocalGunTable
+		return FinalizeResolvedLocalGun(FallbackLocalGunTable)
 	end
 
-	ShieldModeRuntimeTable.activeLocalGun = nil
-	return nil
+	return FinalizeResolvedLocalGun(nil)
 end
 
 local function GetLocalGunTipWorldPosition(LocalGunTable)
@@ -1991,36 +2032,75 @@ local function GetLocalGunTipWorldPosition(LocalGunTable)
 end
 
 function ShieldModeRuntimeTable.GetCurrentLocalGunMuzzleOrigin(LocalCharacterModel)
+	local FrameIdNumber = tonumber(CurrentFrameSequenceNumber) or 0
 	local ActiveLocalGunTable = ShieldModeRuntimeTable.ResolveCurrentLocalGun(LocalCharacterModel)
+	if ShieldModeRuntimeTable.currentLocalGunMuzzleOriginFrameId == FrameIdNumber
+		and ShieldModeRuntimeTable.currentLocalGunCharacter == LocalCharacterModel
+		and ShieldModeRuntimeTable.activeLocalGun == ActiveLocalGunTable then
+		return ShieldModeRuntimeTable.currentLocalGunMuzzleOriginValue
+	end
+
 	if not ActiveLocalGunTable then
+		ShieldModeRuntimeTable.currentLocalGunMuzzleOriginFrameId = FrameIdNumber
+		ShieldModeRuntimeTable.currentLocalGunMuzzleOriginValue = nil
 		return nil
 	end
 
-	return GetLocalGunTipWorldPosition(ActiveLocalGunTable)
+	local MuzzleOriginVector3 = GetLocalGunTipWorldPosition(ActiveLocalGunTable)
+	ShieldModeRuntimeTable.currentLocalGunMuzzleOriginFrameId = FrameIdNumber
+	ShieldModeRuntimeTable.currentLocalGunMuzzleOriginValue = MuzzleOriginVector3
+	return MuzzleOriginVector3
 end
 
 function ShieldModeRuntimeTable.GetCurrentLocalGunRaycastParams(LocalCharacterModel)
+	local FrameIdNumber = tonumber(CurrentFrameSequenceNumber) or 0
 	local ActiveLocalGunTable = ShieldModeRuntimeTable.ResolveCurrentLocalGun(LocalCharacterModel)
-	local RayParamsObject = ActiveLocalGunTable and ActiveLocalGunTable.RayParams or nil
-	if RayParamsObject then
-		return RayParamsObject
+	if ShieldModeRuntimeTable.currentLocalGunRaycastParamsFrameId == FrameIdNumber
+		and ShieldModeRuntimeTable.currentLocalGunCharacter == LocalCharacterModel
+		and ShieldModeRuntimeTable.activeLocalGun == ActiveLocalGunTable then
+		return ShieldModeRuntimeTable.currentLocalGunRaycastParamsValue
 	end
 
-	return VisibilityRaycastParams
+	local RayParamsObject = ActiveLocalGunTable and ActiveLocalGunTable.RayParams or nil
+	local FinalRaycastParamsObject = RayParamsObject or VisibilityRaycastParams
+	ShieldModeRuntimeTable.currentLocalGunRaycastParamsFrameId = FrameIdNumber
+	ShieldModeRuntimeTable.currentLocalGunRaycastParamsValue = FinalRaycastParamsObject
+	return FinalRaycastParamsObject
 end
 
 function ShieldModeRuntimeTable.GetCurrentLocalGunCheckParams(LocalCharacterModel)
+	local FrameIdNumber = tonumber(CurrentFrameSequenceNumber) or 0
 	local ActiveLocalGunTable = ShieldModeRuntimeTable.ResolveCurrentLocalGun(LocalCharacterModel)
-	local CheckParamsObject = ActiveLocalGunTable and ActiveLocalGunTable.CheckParams or nil
-	if CheckParamsObject then
-		return CheckParamsObject
+	if ShieldModeRuntimeTable.currentLocalGunCheckParamsFrameId == FrameIdNumber
+		and ShieldModeRuntimeTable.currentLocalGunCharacter == LocalCharacterModel
+		and ShieldModeRuntimeTable.activeLocalGun == ActiveLocalGunTable then
+		return ShieldModeRuntimeTable.currentLocalGunCheckParamsValue
 	end
 
-	return nil
+	local CheckParamsObject = ActiveLocalGunTable and ActiveLocalGunTable.CheckParams or nil
+	ShieldModeRuntimeTable.currentLocalGunCheckParamsFrameId = FrameIdNumber
+	ShieldModeRuntimeTable.currentLocalGunCheckParamsValue = CheckParamsObject
+	return CheckParamsObject
 end
 
 function ShieldModeRuntimeTable.ResolveCurrentWeaponBallisticsProfile(LocalCharacterModel)
+	local FrameIdNumber = tonumber(CurrentFrameSequenceNumber) or 0
 	local ActiveLocalGunTable = ShieldModeRuntimeTable.ResolveCurrentLocalGun(LocalCharacterModel)
+	if ShieldModeRuntimeTable.currentWeaponBallisticsProfileFrameId == FrameIdNumber
+		and ShieldModeRuntimeTable.currentWeaponBallisticsProfileCharacter == LocalCharacterModel
+		and ShieldModeRuntimeTable.currentWeaponBallisticsProfileLocalGun == ActiveLocalGunTable
+		and type(ShieldModeRuntimeTable.currentWeaponBallisticsProfileValue) == "table" then
+		return ShieldModeRuntimeTable.currentWeaponBallisticsProfileValue
+	end
+
+	local function FinalizeProfile(ProfileResultTable)
+		ShieldModeRuntimeTable.currentWeaponBallisticsProfileFrameId = FrameIdNumber
+		ShieldModeRuntimeTable.currentWeaponBallisticsProfileCharacter = LocalCharacterModel
+		ShieldModeRuntimeTable.currentWeaponBallisticsProfileLocalGun = ActiveLocalGunTable
+		ShieldModeRuntimeTable.currentWeaponBallisticsProfileValue = ProfileResultTable
+		return ProfileResultTable
+	end
+
 	local GunSettingsTable = ActiveLocalGunTable and ActiveLocalGunTable.Settings or nil
 	local WeaponTypeString = GunSettingsTable and GunSettingsTable.WeaponType or nil
 	local WeaponNameString = GunSettingsTable and GunSettingsTable.Name
@@ -2048,7 +2128,7 @@ function ShieldModeRuntimeTable.ResolveCurrentWeaponBallisticsProfile(LocalChara
 		useWorkspaceGravity = LauncherFallbackProfileTable and LauncherFallbackProfileTable.useWorkspaceGravity == true or false,
 		delayedExplosion = LauncherFallbackProfileTable and LauncherFallbackProfileTable.delayedExplosion == true or false,
 		splashAcceptanceScale = LauncherFallbackProfileTable and tonumber(LauncherFallbackProfileTable.splashAcceptanceScale) or nil,
-		muzzleOrigin = GetLocalGunTipWorldPosition(ActiveLocalGunTable),
+		muzzleOrigin = ShieldModeRuntimeTable.GetCurrentLocalGunMuzzleOrigin(LocalCharacterModel),
 		isProjectile = ProjectileNameString ~= nil or LauncherFallbackProfileTable ~= nil,
 		projectileName = ProjectileNameString,
 		speed = nil,
@@ -2108,7 +2188,7 @@ function ShieldModeRuntimeTable.ResolveCurrentWeaponBallisticsProfile(LocalChara
 	end
 
 	if ProjectileNameString == nil and LauncherFallbackProfileTable == nil then
-		return ProfileTable
+		return FinalizeProfile(ProfileTable)
 	end
 
 	ApplyProjectileProfileValues(LauncherFallbackProfileTable)
@@ -2130,7 +2210,7 @@ function ShieldModeRuntimeTable.ResolveCurrentWeaponBallisticsProfile(LocalChara
 		end
 	end
 	if not ProjectileDataTable then
-		return ProfileTable
+		return FinalizeProfile(ProfileTable)
 	end
 
 	ProfileTable.projectileData = ProjectileDataTable
@@ -2148,7 +2228,7 @@ function ShieldModeRuntimeTable.ResolveCurrentWeaponBallisticsProfile(LocalChara
 		end
 	end
 
-	return ProfileTable
+	return FinalizeProfile(ProfileTable)
 end
 
 function ShieldModeRuntimeTable.IsProjectileWeaponProfile(ProfileTable)
@@ -2996,7 +3076,7 @@ local function BuildFallbackSkyAimSolution(LocalCharacterModel, ReferenceDirecti
 	}
 end
 
-local function BuildSkyAimCandidateDirection(BaseFlatDirectionVector3, PitchSineNumber, PitchCosineNumber, YawRotationCFrame)
+local function BuildSkyAimCandidateFacingDirection(BaseFlatDirectionVector3, YawRotationCFrame)
 	local FlatDirectionVector3 = Vector3.new(BaseFlatDirectionVector3.X, 0, BaseFlatDirectionVector3.Z)
 	if FlatDirectionVector3.Magnitude <= 0.001 then
 		FlatDirectionVector3 = Vector3.new(0, 0, -1)
@@ -3012,12 +3092,53 @@ local function BuildSkyAimCandidateDirection(BaseFlatDirectionVector3, PitchSine
 		RotatedFlatDirectionVector3 = RotatedFlatDirectionVector3.Unit
 	end
 
-	local CandidateDirectionVector3 = RotatedFlatDirectionVector3 * PitchCosineNumber + Vector3.new(0, PitchSineNumber, 0)
+	return RotatedFlatDirectionVector3
+end
+
+local function BuildSkyAimCandidateDirection(OriginVector3, TargetPositionVector3, PitchSineNumber, PitchCosineNumber, FallbackFlatDirectionVector3)
+	local FlatDirectionVector3 = nil
+	if typeof(OriginVector3) == "Vector3" and typeof(TargetPositionVector3) == "Vector3" then
+		FlatDirectionVector3 = Vector3.new(
+			TargetPositionVector3.X - OriginVector3.X,
+			0,
+			TargetPositionVector3.Z - OriginVector3.Z
+		)
+	end
+	if typeof(FlatDirectionVector3) ~= "Vector3" or FlatDirectionVector3.Magnitude <= 0.001 then
+		FlatDirectionVector3 = Vector3.new(FallbackFlatDirectionVector3.X, 0, FallbackFlatDirectionVector3.Z)
+	end
+	if FlatDirectionVector3.Magnitude <= 0.001 then
+		FlatDirectionVector3 = Vector3.new(0, 0, -1)
+	else
+		FlatDirectionVector3 = FlatDirectionVector3.Unit
+	end
+
+	local CandidateDirectionVector3 = FlatDirectionVector3 * PitchCosineNumber + Vector3.new(0, PitchSineNumber, 0)
 	if CandidateDirectionVector3.Magnitude <= 0.001 then
 		return nil
 	end
 
 	return CandidateDirectionVector3.Unit
+end
+
+local function ResolveSkyAimCandidatePose(RootPartInstance, HeadPositionVector3, MuzzleOriginVector3, FacingDirectionVector3)
+	if not RootPartInstance
+		or typeof(HeadPositionVector3) ~= "Vector3"
+		or typeof(MuzzleOriginVector3) ~= "Vector3"
+		or typeof(FacingDirectionVector3) ~= "Vector3" then
+		return MuzzleOriginVector3, HeadPositionVector3
+	end
+
+	local FlatFacingDirectionVector3 = Vector3.new(FacingDirectionVector3.X, 0, FacingDirectionVector3.Z)
+	if FlatFacingDirectionVector3.Magnitude <= 0.001 then
+		return MuzzleOriginVector3, HeadPositionVector3
+	end
+
+	local CurrentRootCFrame = RootPartInstance.CFrame
+	local CandidateRootCFrame = CFrame.new(RootPartInstance.Position, RootPartInstance.Position + FlatFacingDirectionVector3.Unit)
+	local MuzzleLocalOffsetVector3 = CurrentRootCFrame:PointToObjectSpace(MuzzleOriginVector3)
+	local HeadLocalOffsetVector3 = CurrentRootCFrame:PointToObjectSpace(HeadPositionVector3)
+	return CandidateRootCFrame:PointToWorldSpace(MuzzleLocalOffsetVector3), CandidateRootCFrame:PointToWorldSpace(HeadLocalOffsetVector3)
 end
 
 local function GetPointToRayDistance(PointVector3, OriginVector3, DirectionVector3)
@@ -3137,16 +3258,16 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 		return nil
 	end
 
-	local function ConsiderCandidate(CandidateDirectionVector3, PitchDegreeNumber, YawDegreeNumber)
-		local MuzzleMissDistanceNumber, MuzzleAlongNumber = GetPointToRayDistance(TargetPositionVector3, MuzzleOriginVector3, CandidateDirectionVector3)
-		local HeadMissDistanceNumber, HeadAlongNumber = GetPointToRayDistance(TargetPositionVector3, HeadPositionVector3, CandidateDirectionVector3)
+	local function ConsiderCandidate(CandidateDirectionVector3, CandidateFacingDirectionVector3, CandidateMuzzleOriginVector3, CandidateHeadPositionVector3, PitchDegreeNumber, YawDegreeNumber)
+		local MuzzleMissDistanceNumber, MuzzleAlongNumber = GetPointToRayDistance(TargetPositionVector3, CandidateMuzzleOriginVector3, CandidateDirectionVector3)
+		local HeadMissDistanceNumber, HeadAlongNumber = GetPointToRayDistance(TargetPositionVector3, CandidateHeadPositionVector3, CandidateDirectionVector3)
 		local MissDistanceNumber = math.min(MuzzleMissDistanceNumber, HeadMissDistanceNumber)
 		local AlongNumber = math.max(MuzzleAlongNumber, HeadAlongNumber)
 		if AlongNumber <= 0 then
 			return
 		end
 
-		local FlatFacingDirectionVector3 = Vector3.new(CandidateDirectionVector3.X, 0, CandidateDirectionVector3.Z)
+		local FlatFacingDirectionVector3 = Vector3.new(CandidateFacingDirectionVector3.X, 0, CandidateFacingDirectionVector3.Z)
 		if FlatFacingDirectionVector3.Magnitude <= 0.001 then
 			FlatFacingDirectionVector3 = BaseFlatDirectionVector3
 		else
@@ -3156,7 +3277,7 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 		local AbsoluteYawNumber = math.abs(YawDegreeNumber)
 		local CandidateSolutionTable = {
 			direction = CandidateDirectionVector3,
-			hitPosition = MuzzleOriginVector3 + CandidateDirectionVector3 * SkyAimHitDistanceNumber,
+			hitPosition = CandidateMuzzleOriginVector3 + CandidateDirectionVector3 * SkyAimHitDistanceNumber,
 			facingDirection = FlatFacingDirectionVector3,
 			missDistance = MissDistanceNumber,
 			upward = CandidateDirectionVector3.Y,
@@ -3177,10 +3298,11 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 		end
 
 		local DirectHitBoolean = false
-		if CurrentLocalGunRaycastParamsObject and TargetDistanceNumber > 0.001 then
-			local RaycastDistanceNumber = math.max(TargetDistanceNumber + 6, 12)
+		local CandidateTargetDistanceNumber = (TargetPositionVector3 - CandidateMuzzleOriginVector3).Magnitude
+		if CurrentLocalGunRaycastParamsObject and CandidateTargetDistanceNumber > 0.001 then
+			local RaycastDistanceNumber = math.max(CandidateTargetDistanceNumber + 6, 12)
 			local RaycastResult = RunUnredirectedWorkspaceRaycast(
-				MuzzleOriginVector3,
+				CandidateMuzzleOriginVector3,
 				CandidateDirectionVector3 * RaycastDistanceNumber,
 				CurrentLocalGunRaycastParamsObject
 			)
@@ -3194,7 +3316,7 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 		local HeadClearBoolean = true
 		if CurrentLocalGunCheckParamsObject and (DirectHitBoolean or not RequiredPriorityNumber or RequiredPriorityNumber < 3) then
 			HeadClearBoolean = RunUnredirectedWorkspaceRaycast(
-				HeadPositionVector3,
+				CandidateHeadPositionVector3,
 				CandidateDirectionVector3 * 3.5,
 				CurrentLocalGunCheckParamsObject
 			) == nil
@@ -3223,22 +3345,52 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 				and AbsoluteYawNumber < (BestSolutionTable.yawAbs or math.huge)) then
 			BestSolutionTable = CandidateSolutionTable
 		end
+
+		if RequiredPriorityNumber and CandidateSolutionTable.priority >= RequiredPriorityNumber then
+			return true
+		end
+
+		return false
 	end
 
 	for _, PitchGroupTable in ipairs(GetSkyAimCandidateGroups(RequiredPriorityNumber)) do
 		for _, YawEntryTable in ipairs(PitchGroupTable.yaws) do
-			local CandidateDirectionVector3 = BuildSkyAimCandidateDirection(
+			local CandidateFacingDirectionVector3 = BuildSkyAimCandidateFacingDirection(
 				BaseFlatDirectionVector3,
-				PitchGroupTable.sinPitch,
-				PitchGroupTable.cosPitch,
 				YawEntryTable.rotation
 			)
+			local CandidateMuzzleOriginVector3, CandidateHeadPositionVector3 = ResolveSkyAimCandidatePose(
+				RootPartInstance,
+				HeadPositionVector3,
+				MuzzleOriginVector3,
+				CandidateFacingDirectionVector3
+			)
+			local CandidateDirectionVector3 = BuildSkyAimCandidateDirection(
+				CandidateMuzzleOriginVector3,
+				TargetPositionVector3,
+				PitchGroupTable.sinPitch,
+				PitchGroupTable.cosPitch,
+				CandidateFacingDirectionVector3
+			)
 			if CandidateDirectionVector3 then
-				ConsiderCandidate(CandidateDirectionVector3, PitchGroupTable.pitch, YawEntryTable.yaw)
+				if ConsiderCandidate(
+					CandidateDirectionVector3,
+					CandidateFacingDirectionVector3,
+					CandidateMuzzleOriginVector3,
+					CandidateHeadPositionVector3,
+					PitchGroupTable.pitch,
+					YawEntryTable.yaw
+				) then
+					break
+				end
 			end
 		end
 
-		if BestSolutionTable and (BestSolutionTable.priority or 0) >= 4 then
+		if BestSolutionTable
+			and (
+				((BestSolutionTable.priority or 0) >= 4)
+				or (RequiredPriorityNumber and (BestSolutionTable.priority or 0) >= RequiredPriorityNumber)
+			) then
 			break
 		end
 	end
@@ -3277,7 +3429,6 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 	end
 	return FinalSolutionTable
 end
-
 function ShieldModeRuntimeTable.ResetState()
 	ShieldModeRuntimeTable.SetReloadSuppressionEnabled(false)
 	ShieldModeRuntimeTable.nextShotTime = 0
@@ -3290,6 +3441,7 @@ function ShieldModeRuntimeTable.ResetState()
 	ShieldModeRuntimeTable.lastThreatScanTime = 0
 	ShieldModeRuntimeTable.cachedThreatData = nil
 	ShieldModeRuntimeTable.skyAimSolutionCache = nil
+	ShieldModeRuntimeTable.shotSkyAimDataCache = nil
 	ShieldModeRuntimeTable.forcedBodyRotationCFrame = nil
 	ShieldModeRuntimeTable.lastEquipAttemptTime = 0
 end
@@ -3439,6 +3591,14 @@ local function GetFlatFacingDirectionVector3(DirectionVector3)
 	return FlatDirectionVector3.Unit
 end
 
+local function AreCloseVector3Values(LeftVector3, RightVector3, ToleranceNumber)
+	if typeof(LeftVector3) ~= "Vector3" or typeof(RightVector3) ~= "Vector3" then
+		return LeftVector3 == RightVector3
+	end
+
+	return (LeftVector3 - RightVector3).Magnitude <= (ToleranceNumber or 0.05)
+end
+
 local function ResolveShotSkyAimDataTable(LocalCharacterModel, ReferenceDirectionVector3, EquippedTool)
 	if not IsSillyModeBehaviorActive() then
 		return nil
@@ -3454,25 +3614,65 @@ local function ResolveShotSkyAimDataTable(LocalCharacterModel, ReferenceDirectio
 
 	local WeaponBallisticsProfileTable = CurrentWeaponBallisticsProfileTable
 		or ShieldModeRuntimeTable.ResolveCurrentWeaponBallisticsProfile(LocalCharacterModel)
+	local FrameIdNumber = tonumber(CurrentFrameSequenceNumber) or 0
+	local TargetCharacterModel = CurrentTargetCharacterModel and CurrentTargetCharacterModel.Parent and CurrentTargetCharacterModel or nil
+	local TargetPartInstance = CurrentTargetPartInstance and CurrentTargetPartInstance.Parent and CurrentTargetPartInstance or nil
+	local AimPointVector3 = GetCurrentEffectiveAimPointVector3()
+	if typeof(AimPointVector3) ~= "Vector3" and TargetPartInstance then
+		AimPointVector3 = TargetPartInstance.Position
+	end
+
+	local CachedShotSkyAimDataTable = ShieldModeRuntimeTable.shotSkyAimDataCache
+	if CachedShotSkyAimDataTable
+		and CachedShotSkyAimDataTable.frameId == FrameIdNumber
+		and CachedShotSkyAimDataTable.localCharacter == LocalCharacterModel
+		and CachedShotSkyAimDataTable.weaponProfile == WeaponBallisticsProfileTable
+		and CachedShotSkyAimDataTable.targetCharacter == TargetCharacterModel
+		and CachedShotSkyAimDataTable.targetPart == TargetPartInstance
+		and AreCloseVector3Values(CachedShotSkyAimDataTable.targetPoint, AimPointVector3, 0.05)
+		and AreCloseVector3Values(CachedShotSkyAimDataTable.referenceDirection, ReferenceDirectionVector3, 0.01) then
+		return CachedShotSkyAimDataTable.data
+	end
+
+	local function FinalizeShotSkyAimData(ShotSkyAimDataTable)
+		ShieldModeRuntimeTable.shotSkyAimDataCache = {
+			frameId = FrameIdNumber,
+			localCharacter = LocalCharacterModel,
+			weaponProfile = WeaponBallisticsProfileTable,
+			targetCharacter = TargetCharacterModel,
+			targetPart = TargetPartInstance,
+			targetPoint = AimPointVector3,
+			referenceDirection = ReferenceDirectionVector3,
+			data = ShotSkyAimDataTable,
+		}
+		return ShotSkyAimDataTable
+	end
+
 	if ShieldModeRuntimeTable.IsProjectileWeaponProfile(WeaponBallisticsProfileTable) then
 		local AimOriginVector3 = ResolveWeaponAimOriginVector3(LocalCharacterModel, WeaponBallisticsProfileTable)
-		local AimPointVector3 = GetCurrentEffectiveAimPointVector3()
 		if typeof(AimOriginVector3) == "Vector3" and typeof(AimPointVector3) == "Vector3" then
 			local DirectionVector3 = AimPointVector3 - AimOriginVector3
 			if DirectionVector3.Magnitude > 0.001 then
-				return {
+				return FinalizeShotSkyAimData({
 					direction = DirectionVector3.Unit,
 					facingDirection = GetFlatFacingDirectionVector3(DirectionVector3),
-				}
+				})
 			end
 		end
 
-		return nil
+		return FinalizeShotSkyAimData(nil)
 	end
 
-	local SkyAimSolutionTable = ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVector3, EquippedTool)
+	local SkyAimSolutionTable = ResolveSkyAimSolution(
+		LocalCharacterModel,
+		ReferenceDirectionVector3,
+		EquippedTool,
+		AimPointVector3,
+		TargetCharacterModel,
+		TargetPartInstance
+	)
 	if not SkyAimSolutionTable then
-		return nil
+		return FinalizeShotSkyAimData(nil)
 	end
 
 	local FacingDirectionVector3 = SkyAimSolutionTable.facingDirection
@@ -3480,12 +3680,12 @@ local function ResolveShotSkyAimDataTable(LocalCharacterModel, ReferenceDirectio
 		FacingDirectionVector3 = GetFlatFacingDirectionVector3(SkyAimSolutionTable.direction)
 	end
 
-	return {
+	return FinalizeShotSkyAimData({
 		direction = SkyAimSolutionTable.direction,
 		facingDirection = FacingDirectionVector3,
 		hitPosition = SkyAimSolutionTable.hitPosition,
 		priority = SkyAimSolutionTable.priority,
-	}
+	})
 end
 
 function ShieldModeRuntimeTable.GetShotSkyHitPosition()
@@ -3497,8 +3697,13 @@ function ShieldModeRuntimeTable.GetShotSkyHitPosition()
 		return nil
 	end
 
-	local LocalCharacterModel = ResolveCharacterModelForPlayer(LocalPlayer)
-	if not IsLocalCharacterReadyForAimbot(LocalCharacterModel) then
+	local LocalCharacterModel = CurrentFrameLocalCharacterModel
+	local LocalCharacterReadyBoolean = CurrentFrameLocalCharacterReadyBoolean
+	if not LocalCharacterReadyBoolean or not LocalCharacterModel or not LocalCharacterModel.Parent then
+		LocalCharacterModel = ResolveCharacterModelForPlayer(LocalPlayer)
+		LocalCharacterReadyBoolean = IsLocalCharacterReadyForAimbot(LocalCharacterModel)
+	end
+	if not LocalCharacterReadyBoolean then
 		return nil
 	end
 
@@ -3657,9 +3862,24 @@ function ShieldModeRuntimeTable.EnsureCursorHooks()
 
 	local OriginalGetHitFunction = CursorModuleTable.GetHit
 	CursorModuleTable.GetHit = function(SelfTable, ...)
-		local LocalCharacterModel = ResolveCharacterModelForPlayer(LocalPlayer)
+		if not CurrentTargetPartInstance or not CurrentTargetCharacterModel or not CurrentTargetPartInstance.Parent then
+			return OriginalGetHitFunction(SelfTable, ...)
+		end
+
+		local LocalCharacterModel = CurrentFrameLocalCharacterModel
+		local LocalCharacterReadyBoolean = CurrentFrameLocalCharacterReadyBoolean
+		if not LocalCharacterReadyBoolean or not LocalCharacterModel or not LocalCharacterModel.Parent then
+			LocalCharacterModel = ResolveCharacterModelForPlayer(LocalPlayer)
+			LocalCharacterReadyBoolean = IsLocalCharacterReadyForAimbot(LocalCharacterModel)
+			if not LocalCharacterReadyBoolean then
+				return OriginalGetHitFunction(SelfTable, ...)
+			end
+		end
+
 		local WeaponBallisticsProfileTable = CurrentWeaponBallisticsProfileTable
-			or ShieldModeRuntimeTable.ResolveCurrentWeaponBallisticsProfile(LocalCharacterModel)
+		if not WeaponBallisticsProfileTable then
+			WeaponBallisticsProfileTable = ShieldModeRuntimeTable.ResolveCurrentWeaponBallisticsProfile(LocalCharacterModel)
+		end
 		if ShieldModeRuntimeTable.IsProjectileWeaponProfile(WeaponBallisticsProfileTable)
 			and ShieldModeRuntimeTable.ShouldRedirectTowardCurrentTarget(LocalCharacterModel)
 			and ShouldApplyNormalHookHitChance() then
@@ -3667,6 +3887,10 @@ function ShieldModeRuntimeTable.EnsureCursorHooks()
 			if typeof(ProjectileAimPointVector3) == "Vector3" then
 				return ProjectileAimPointVector3
 			end
+		end
+
+		if not IsSillyModeBehaviorActive() then
+			return OriginalGetHitFunction(SelfTable, ...)
 		end
 
 		local ForcedHitPositionVector3 = ShieldModeRuntimeTable.GetShotSkyHitPosition()
@@ -4919,7 +5143,6 @@ GetSearchableCharacterEntries = function(LocalCharacterModel, TeamCheckEnabledBo
 	CachedSearchableCharacterEntriesTimeNumber = NowNumber
 	return CharacterEntries
 end
-
 local function CreateSectionHeader(SectionTitleString, YOffsetNumber)
 	local HeaderFrame = Instance.new("Frame")
 	HeaderFrame.Name = SectionTitleString .. "HeaderFrame"
@@ -6197,8 +6420,8 @@ local function IsVisible(TargetPositionVector3, CharacterModel, PartInstance)
 		and SillySkyAimEnabledBoolean
 		and not ShieldModeEnabledBoolean
 		and not ShieldModeRuntimeTable.IsProjectileWeaponProfile(CurrentWeaponBallisticsProfileTable) then
-		local LocalCharacterModel = ResolveCharacterModelForPlayer(LocalPlayer)
-		if LocalCharacterModel and LocalCharacterModel.Parent then
+		local LocalCharacterModel = CurrentFrameLocalCharacterModel
+		if CurrentFrameLocalCharacterReadyBoolean and LocalCharacterModel and LocalCharacterModel.Parent then
 			local EquippedTool = ShieldModeRuntimeTable.GetEquippedTool and ShieldModeRuntimeTable.GetEquippedTool(LocalCharacterModel) or nil
 			local SkyAimSolutionTable = ResolveSkyAimSolution(
 				LocalCharacterModel,
@@ -6836,7 +7059,12 @@ function ShieldModeRuntimeTable.RunTargetSearch(LocalCharacterModel, MouseLocati
 	end
 
 	if not IsSillyModeBehaviorActive() then
-		SearchResultTable.candidate = ShieldModeRuntimeTable.ReadTargetSelectionSlot(ClosestSelectionSlotTable, false)
+		if IsEffectiveHeadshotPriorityEnabled() then
+			SearchResultTable.candidate = ShieldModeRuntimeTable.ReadTargetSelectionSlot(ClosestHeadSelectionSlotTable, false)
+		end
+		if not SearchResultTable.candidate then
+			SearchResultTable.candidate = ShieldModeRuntimeTable.ReadTargetSelectionSlot(ClosestSelectionSlotTable, false)
+		end
 		return SearchResultTable
 	end
 
@@ -6935,92 +7163,119 @@ function ShieldModeRuntimeTable.ShouldSkipBloodZoneProjectileRaycastRedirect(Loc
 	local ProjectileRaycastParamsObject = ActiveLocalGunTable and ActiveLocalGunTable.RayParams or nil
 	return ProjectileRaycastParamsObject ~= nil and RaycastParamsObject == ProjectileRaycastParamsObject
 end
-
-ShieldModeRuntimeTable.oldNamecall = hookmetamethod(game, "__namecall", function(Self, ...)
-	local Args = { ... }
-	local Method = getnamecallmethod()
-	if InternalAimbotRaycastBypassDepth > 0
-		and (Method == "Raycast" or Method == "FindPartOnRayWithIgnoreList" or Method == "FindPartOnRay") then
-		return ShieldModeRuntimeTable.oldNamecall(Self, ...)
+local function ClearMutableTable(TableObject)
+	if type(TableObject) ~= "table" then
+		return {}
 	end
 
-	local LocalCharacterModel = ResolveCharacterModelForPlayer(LocalPlayer)
-	local LocalCharacterReadyBoolean = IsLocalCharacterReadyForAimbot(LocalCharacterModel)
-
-	if LocalCharacterReadyBoolean and IsEffectiveHookMethodEnabled() and CurrentTargetPartInstance and CurrentTargetCharacterModel and CurrentTargetPartInstance.Parent then
-		if Method == "Raycast" and Self == WorkspaceService then
-			local Origin = Args[1]
-			local Direction = Args[2]
-			local RaycastParamsObject = Args[3]
-
-			local ShouldRedirect = true
-			if AimbotRequireRmbBoolean then
-				ShouldRedirect = ShieldModeRuntimeTable.IsLockKeyHeld()
-			end
-			if ShouldRedirect then
-				ShouldRedirect = ShouldApplyNormalHookHitChance()
-			end
-
-			if ShouldRedirect
-				and CurrentTargetPartInstance
-				and typeof(Origin) == "Vector3"
-				and typeof(Direction) == "Vector3"
-				and Direction.Magnitude > 0.001 then
-				local TargetPosition = GetCurrentEffectiveAimPointVector3() or CurrentTargetPartInstance.Position
-				local ActiveFiringLocalGunTable = ShieldModeRuntimeTable.activeFiringLocalGun
-				if IsBloodZonePlaceBoolean
-					and type(ActiveFiringLocalGunTable) == "table"
-					and RaycastParamsObject == ActiveFiringLocalGunTable.CheckParams then
-					local RedirectOriginVector3, RedirectDirectionVector3 = ShieldModeRuntimeTable.GetFireGunMuzzleRedirect(
-						ActiveFiringLocalGunTable,
-						TargetPosition,
-						Origin,
-						Direction.Magnitude
-					)
-					if RedirectOriginVector3 and RedirectDirectionVector3 then
-						Args[1] = RedirectOriginVector3
-						Args[2] = RedirectDirectionVector3
-					end
-				elseif ShieldModeRuntimeTable.ShouldSkipBloodZoneProjectileRaycastRedirect(LocalCharacterModel, RaycastParamsObject) then
-					return ShieldModeRuntimeTable.oldNamecall(Self, ...)
-				else
-					Args[2] = (TargetPosition - Origin).Unit * Direction.Magnitude
-				end
-			end
-
-			return ShieldModeRuntimeTable.oldNamecall(Self, unpack(Args))
-		elseif Method == "FindPartOnRayWithIgnoreList" or Method == "FindPartOnRay" then
-			local RayObject = Args[1]
-
-			local ShouldRedirect = true
-			if AimbotRequireRmbBoolean then
-				ShouldRedirect = ShieldModeRuntimeTable.IsLockKeyHeld()
-			end
-			if ShouldRedirect then
-				ShouldRedirect = ShouldApplyNormalHookHitChance()
-			end
-
-			if ShouldRedirect and CurrentTargetPartInstance and RayObject then
-				local TargetPosition = GetCurrentEffectiveAimPointVector3() or CurrentTargetPartInstance.Position
-				local NewDirection = (TargetPosition - RayObject.Origin).Unit * RayObject.Direction.Magnitude
-				Args[1] = Ray.new(RayObject.Origin, NewDirection)
-			end
-
-			return ShieldModeRuntimeTable.oldNamecall(Self, unpack(Args))
+	if type(table.clear) == "function" then
+		table.clear(TableObject)
+	else
+		for Key in pairs(TableObject) do
+			TableObject[Key] = nil
 		end
 	end
 
-	return ShieldModeRuntimeTable.oldNamecall(Self, ...)
+	return TableObject
+end
+
+ShieldModeRuntimeTable.oldNamecall = hookmetamethod(game, "__namecall", function(Self, ...)
+	local Method = getnamecallmethod()
+	local IsWorkspaceRaycastMethodBoolean = Method == "Raycast" and Self == WorkspaceService
+	local IsLegacyRayMethodBoolean = Method == "FindPartOnRayWithIgnoreList" or Method == "FindPartOnRay"
+	if InternalAimbotRaycastBypassDepth > 0
+		and (IsWorkspaceRaycastMethodBoolean or IsLegacyRayMethodBoolean) then
+		return ShieldModeRuntimeTable.oldNamecall(Self, ...)
+	end
+
+	if not IsWorkspaceRaycastMethodBoolean and not IsLegacyRayMethodBoolean then
+		return ShieldModeRuntimeTable.oldNamecall(Self, ...)
+	end
+
+	if not IsEffectiveHookMethodEnabled()
+		or not CurrentTargetPartInstance
+		or not CurrentTargetCharacterModel
+		or not CurrentTargetPartInstance.Parent then
+		return ShieldModeRuntimeTable.oldNamecall(Self, ...)
+	end
+
+	local LocalCharacterModel = CurrentFrameLocalCharacterModel
+	local LocalCharacterReadyBoolean = CurrentFrameLocalCharacterReadyBoolean
+	if not LocalCharacterReadyBoolean or not LocalCharacterModel or not LocalCharacterModel.Parent then
+		LocalCharacterModel = ResolveCharacterModelForPlayer(LocalPlayer)
+		LocalCharacterReadyBoolean = IsLocalCharacterReadyForAimbot(LocalCharacterModel)
+		if not LocalCharacterReadyBoolean then
+			return ShieldModeRuntimeTable.oldNamecall(Self, ...)
+		end
+	end
+
+	local ShouldRedirect = true
+	if AimbotRequireRmbBoolean then
+		ShouldRedirect = ShieldModeRuntimeTable.IsLockKeyHeld()
+	end
+	if ShouldRedirect then
+		ShouldRedirect = ShouldApplyNormalHookHitChance()
+	end
+	if not ShouldRedirect then
+		return ShieldModeRuntimeTable.oldNamecall(Self, ...)
+	end
+
+	local Args = { ... }
+	if IsWorkspaceRaycastMethodBoolean then
+		local Origin = Args[1]
+		local Direction = Args[2]
+		local RaycastParamsObject = Args[3]
+
+		if typeof(Origin) == "Vector3"
+			and typeof(Direction) == "Vector3"
+			and Direction.Magnitude > 0.001 then
+			local TargetPosition = GetCurrentEffectiveAimPointVector3() or CurrentTargetPartInstance.Position
+			local ActiveFiringLocalGunTable = ShieldModeRuntimeTable.activeFiringLocalGun
+			if IsBloodZonePlaceBoolean
+				and type(ActiveFiringLocalGunTable) == "table"
+				and RaycastParamsObject == ActiveFiringLocalGunTable.CheckParams then
+				local RedirectOriginVector3, RedirectDirectionVector3 = ShieldModeRuntimeTable.GetFireGunMuzzleRedirect(
+					ActiveFiringLocalGunTable,
+					TargetPosition,
+					Origin,
+					Direction.Magnitude
+				)
+				if RedirectOriginVector3 and RedirectDirectionVector3 then
+					Args[1] = RedirectOriginVector3
+					Args[2] = RedirectDirectionVector3
+				end
+			elseif ShieldModeRuntimeTable.ShouldSkipBloodZoneProjectileRaycastRedirect(LocalCharacterModel, RaycastParamsObject) then
+				return ShieldModeRuntimeTable.oldNamecall(Self, ...)
+			else
+				Args[2] = (TargetPosition - Origin).Unit * Direction.Magnitude
+			end
+		end
+
+		return ShieldModeRuntimeTable.oldNamecall(Self, unpack(Args))
+	end
+
+	local RayObject = Args[1]
+	if RayObject then
+		local TargetPosition = GetCurrentEffectiveAimPointVector3() or CurrentTargetPartInstance.Position
+		local NewDirection = (TargetPosition - RayObject.Origin).Unit * RayObject.Direction.Magnitude
+		Args[1] = Ray.new(RayObject.Origin, NewDirection)
+	end
+
+	return ShieldModeRuntimeTable.oldNamecall(Self, unpack(Args))
 end)
 
 RunService.RenderStepped.Connect(RunService.RenderStepped, function()
+	CurrentFrameSequenceNumber = (tonumber(CurrentFrameSequenceNumber) or 0) + 1
 	local FrameNowNumber = tick()
 	local MouseLocationVector2 = UserInputService.GetMouseLocation(UserInputService)
 	local MouseOverPartInstance = MouseObject.Target
-	FrameTargetDataCacheTable.normal = {}
-	FrameTargetDataCacheTable.ignoreFov = {}
-	FrameCharacterVelocityCacheTable = {}
+	FrameTargetDataCacheTable.normal = ClearMutableTable(FrameTargetDataCacheTable.normal)
+	FrameTargetDataCacheTable.ignoreFov = ClearMutableTable(FrameTargetDataCacheTable.ignoreFov)
+	FrameCharacterVelocityCacheTable = ClearMutableTable(FrameCharacterVelocityCacheTable)
 	CurrentWeaponBallisticsProfileTable = nil
+	CurrentFrameLocalCharacterModel = nil
+	CurrentFrameLocalCharacterReadyBoolean = false
+	ShieldModeRuntimeTable.shotSkyAimDataCache = nil
 	FovCircle.Position = MouseLocationVector2
 	if not UseHookMethodBoolean or IsSillyModeBehaviorActive() or not CurrentTargetPartInstance then
 		ResetNormalHookHitChanceDecision()
@@ -7047,7 +7302,9 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 	end
 
 	local LocalCharacterReadyBoolean = IsLocalCharacterReadyForAimbot(LocalCharacterModel)
-	if UseProjectilePredictionBoolean then
+	CurrentFrameLocalCharacterModel = LocalCharacterModel
+	CurrentFrameLocalCharacterReadyBoolean = LocalCharacterReadyBoolean
+	if UseProjectilePredictionBoolean and LocalCharacterReadyBoolean then
 		CurrentWeaponBallisticsProfileTable = ShieldModeRuntimeTable.ResolveCurrentWeaponBallisticsProfile(LocalCharacterModel)
 	else
 		CurrentWeaponBallisticsProfileTable = nil
