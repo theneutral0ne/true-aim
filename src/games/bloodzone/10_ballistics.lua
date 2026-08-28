@@ -1446,9 +1446,33 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 		and ShieldModeRuntimeTable.GetCurrentLocalGunRaycastParams(LocalCharacterModel) or nil
 	local CurrentLocalGunCheckParamsObject = ShieldModeRuntimeTable.GetCurrentLocalGunCheckParams
 		and ShieldModeRuntimeTable.GetCurrentLocalGunCheckParams(LocalCharacterModel) or nil
+	local CandidateLockDurationNumber = math.max(tonumber(SkyAimCandidateLockDurationNumber) or 0, 0)
 	if not SkipCacheBoolean then
 		local CachedSolutionTable = ShieldModeRuntimeTable.skyAimSolutionCache
 		local CachedSolutionValue = CachedSolutionTable and CachedSolutionTable.solution or nil
+		if CachedSolutionValue
+			and not CachedSolutionValue.isFallback
+			and (CachedSolutionValue.priority or 0) >= 3
+			and CandidateLockDurationNumber > 0
+			and (tick() - (CachedSolutionTable.time or 0)) < CandidateLockDurationNumber
+			and CachedSolutionTable.localCharacter == LocalCharacterModel
+			and CachedSolutionTable.targetCharacter == TargetCharacterModel
+			and CachedSolutionTable.targetPart == TargetPartInstance
+			and CachedSolutionTable.equippedTool == EquippedTool
+			and CurrentLocalGunRaycastParamsObject
+			and typeof(CachedSolutionValue.muzzleOrigin) == "Vector3" then
+			local CachedTargetOffsetVector3 = TargetPositionVector3 - CachedSolutionValue.muzzleOrigin
+			if CachedTargetOffsetVector3.Magnitude > 0.001 then
+				local CachedLockRaycastResult = RunUnredirectedWorkspaceRaycast(
+					CachedSolutionValue.muzzleOrigin,
+					CachedTargetOffsetVector3.Unit * math.max(CachedTargetOffsetVector3.Magnitude + 6, 12),
+					CurrentLocalGunRaycastParamsObject
+				)
+				if IsRaycastResultTargetHit(CachedLockRaycastResult, TargetCharacterModel) then
+					return CachedSolutionValue
+				end
+			end
+		end
 		local CachedSolutionCanBeReusedBoolean = true
 		if CachedSolutionValue then
 			local CachedPriorityNumber = CachedSolutionValue.priority or 0
@@ -1508,7 +1532,6 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 	local PreviousCandidateSolutionTable = nil
 	local PreviousSkyAimCacheTable = ShieldModeRuntimeTable.skyAimSolutionCache
 	local PreviousSkyAimSolutionTable = PreviousSkyAimCacheTable and PreviousSkyAimCacheTable.solution or nil
-	local CandidateLockDurationNumber = math.max(tonumber(SkyAimCandidateLockDurationNumber) or 0, 0)
 	if PreviousSkyAimSolutionTable
 		and not PreviousSkyAimSolutionTable.isFallback
 		and type(PreviousSkyAimSolutionTable.yaw) == "number"
