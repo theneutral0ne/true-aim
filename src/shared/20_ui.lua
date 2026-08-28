@@ -1,4 +1,3 @@
-do
 local function CreateSectionHeader(SectionTitleString, YOffsetNumber)
 	local HeaderFrame = Instance.new("Frame")
 	HeaderFrame.Name = SectionTitleString .. "HeaderFrame"
@@ -440,7 +439,7 @@ local function UpdateHookHitChanceSliderAppearance()
 	HookHitChanceSliderKnobFrame.Position = UDim2.new(RatioNumber, -KnobWidthNumber / 2, 0.5, -HookHitChanceSliderKnobFrame.AbsoluteSize.Y / 2)
 end
 
-function GetCurrentLockKeyMode()
+local function GetCurrentLockKeyMode()
 	return LockKeyModesTable[LockKeyModeIndexNumber] or "RMB"
 end
 
@@ -535,7 +534,7 @@ local function UpdateSillySkyVisibilityButtonAppearance()
 	end
 end
 
-function RefreshBloodZoneBehaviorButtons()
+local function RefreshBloodZoneBehaviorButtons()
 	UpdateHeadshotButtonAppearance()
 	UpdateAutoFireButtonAppearance()
 	UpdateVisibleCheckButtonAppearance()
@@ -1047,7 +1046,7 @@ SetTargetCubeVisible = function(IsVisible)
 	end
 end
 
-function UpdateTargetCube(CubeCFrame, CubeSize, SurfacePointVector3)
+local function UpdateTargetCube(CubeCFrame, CubeSize, SurfacePointVector3)
 	local WorldCorners = GetCubeCorners(CubeCFrame, CubeSize)
 	local ScreenCorners = {}
 	local OnScreenFlags = {}
@@ -1070,5 +1069,4 @@ function UpdateTargetCube(CubeCFrame, CubeSize, SurfacePointVector3)
 			Line.Visible = false
 		end
 	end
-end
 end
