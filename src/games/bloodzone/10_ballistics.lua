@@ -1422,19 +1422,18 @@ local function ResolveSkyAimSolution(LocalCharacterModel, ReferenceDirectionVect
 					end
 				end
 			end
-		end
-		if CachedSolutionTable
-			and CachedSolutionCanBeReusedBoolean
-			and (tick() - (CachedSolutionTable.time or 0)) < SkyAimSolutionCacheDurationNumber
-			and CachedSolutionTable.localCharacter == LocalCharacterModel
-			and CachedSolutionTable.targetCharacter == TargetCharacterModel
-			and CachedSolutionTable.targetPart == TargetPartInstance
-			and typeof(CachedSolutionTable.targetPosition) == "Vector3"
-			and (CachedSolutionTable.targetPosition - TargetPositionVector3).Magnitude <= 0.05
-			and typeof(CachedSolutionTable.muzzleOrigin) == "Vector3"
-			and (CachedSolutionTable.muzzleOrigin - MuzzleOriginVector3).Magnitude <= 0.05
-			and typeof(CachedSolutionTable.headPosition) == "Vector3"
-			and (CachedSolutionTable.headPosition - HeadPositionVector3).Magnitude <= 0.05 then
+			if CachedSolutionTable
+				and CachedSolutionCanBeReusedBoolean
+				and (tick() - (CachedSolutionTable.time or 0)) < SkyAimSolutionCacheDurationNumber
+				and CachedSolutionTable.localCharacter == LocalCharacterModel
+				and CachedSolutionTable.targetCharacter == TargetCharacterModel
+				and CachedSolutionTable.targetPart == TargetPartInstance
+				and typeof(CachedSolutionTable.targetPosition) == "Vector3"
+				and (CachedSolutionTable.targetPosition - TargetPositionVector3).Magnitude <= 0.05
+				and typeof(CachedSolutionTable.muzzleOrigin) == "Vector3"
+				and (CachedSolutionTable.muzzleOrigin - MuzzleOriginVector3).Magnitude <= 0.05
+				and typeof(CachedSolutionTable.headPosition) == "Vector3"
+				and (CachedSolutionTable.headPosition - HeadPositionVector3).Magnitude <= 0.05 then
 			return CachedSolutionTable.solution
 		end
 	end
