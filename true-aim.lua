@@ -7355,12 +7355,12 @@ RaycastBetweenIgnoringGlass = function(OriginVector3, TargetPositionVector3, Ext
 	return nil
 end
 
-local function RaycastToTargetIgnoringGlass(TargetPositionVector3)
+function RaycastToTargetIgnoringGlass(TargetPositionVector3)
 	local OriginVector3 = CurrentVisibilityOriginVector3 or Camera.CFrame.Position
 	return RaycastBetweenIgnoringGlass(OriginVector3, TargetPositionVector3, nil)
 end
 
-local function IsVisible(TargetPositionVector3, CharacterModel, PartInstance)
+function IsVisible(TargetPositionVector3, CharacterModel, PartInstance)
 	if IsTargetPointBlockedByMetalShield(TargetPositionVector3, CharacterModel) then
 		return false
 	end
@@ -8083,7 +8083,7 @@ function ShieldModeRuntimeTable.GetJailbirdVisiblePointForPart(PartInstance, Cha
 	)
 end
 
-local function GetVisiblePointForPart(PartInstance, CharacterModel, MouseLocationVector2)
+function GetVisiblePointForPart(PartInstance, CharacterModel, MouseLocationVector2)
 	if not IsEffectiveTargetSegmentationEnabled() then
 		if IsJailbirdPlaceBoolean then
 			return ShieldModeRuntimeTable.GetJailbirdVisiblePointForPart(PartInstance, CharacterModel, MouseLocationVector2)
