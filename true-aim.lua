@@ -321,9 +321,9 @@ MenuGui.DisplayOrder = 9999
 MenuGui.Parent = gethui()
 
 UiResponsiveRuntimeTable = {
-	menuWidth = 230,
+	menuWidth = 270,
 	menuHeight = CurrentGameIntegrationMenuHeightNumber,
-	playerListWidth = 220,
+	playerListWidth = 245,
 	narrowPlayerListHeight = 240,
 	gap = 10,
 	margin = 14,
@@ -333,12 +333,29 @@ UiResponsiveRuntimeTable = {
 	narrow = false,
 }
 
+UiPaletteTable = {
+	panel = Color3.fromRGB(22, 27, 35),
+	surface = Color3.fromRGB(31, 39, 49),
+	surfaceMuted = Color3.fromRGB(39, 46, 57),
+	surfaceDisabled = Color3.fromRGB(48, 53, 62),
+	border = Color3.fromRGB(67, 83, 101),
+	text = Color3.fromRGB(235, 241, 247),
+	mutedText = Color3.fromRGB(155, 169, 184),
+	accent = Color3.fromRGB(93, 190, 221),
+	accentSoft = Color3.fromRGB(55, 111, 135),
+	success = Color3.fromRGB(68, 166, 125),
+	warning = Color3.fromRGB(205, 157, 68),
+	danger = Color3.fromRGB(179, 83, 91),
+	info = Color3.fromRGB(86, 132, 202),
+	violet = Color3.fromRGB(143, 105, 190),
+}
+
 MenuFrame = Instance.new("Frame")
 MenuFrame.Name = "MainFrame"
 MenuFrame.Size = UDim2.new(0, UiResponsiveRuntimeTable.menuWidth, 0, UiResponsiveRuntimeTable.menuHeight)
 MenuFrame.Position = UDim2.new(0, 20, 0, 200)
-MenuFrame.BackgroundColor3 = Color3.fromRGB(15, 20, 28)
-MenuFrame.BackgroundTransparency = 0.04
+MenuFrame.BackgroundColor3 = UiPaletteTable.panel
+MenuFrame.BackgroundTransparency = 0
 MenuFrame.BorderSizePixel = 0
 MenuFrame.ClipsDescendants = false
 MenuFrame.Active = true
@@ -350,23 +367,24 @@ MenuScaleObject.Name = "ResponsiveScale"
 MenuScaleObject.Scale = 1
 MenuScaleObject.Parent = MenuFrame
 
-MenuBackgroundGradient = Instance.new("UIGradient")
-MenuBackgroundGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(22, 31, 44)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 14, 20)),
-})
-MenuBackgroundGradient.Rotation = 90
-MenuBackgroundGradient.Parent = MenuFrame
+MenuAccentFrame = Instance.new("Frame")
+MenuAccentFrame.Name = "AccentFrame"
+MenuAccentFrame.Size = UDim2.new(1, 0, 0, 3)
+MenuAccentFrame.Position = UDim2.new(0, 0, 0, 0)
+MenuAccentFrame.BackgroundColor3 = UiPaletteTable.accent
+MenuAccentFrame.BorderSizePixel = 0
+MenuAccentFrame.ZIndex = 102
+MenuAccentFrame.Parent = MenuFrame
 
 TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
-TitleLabel.Size = UDim2.new(1, -10, 0, 24)
-TitleLabel.Position = UDim2.new(0, 5, 0, 0)
+TitleLabel.Size = UDim2.new(1, -20, 0, 26)
+TitleLabel.Position = UDim2.new(0, 10, 0, 2)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "Aimbot Settings"
-TitleLabel.Font = Enum.Font.SourceSansBold
-TitleLabel.TextSize = 18
-TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.Text = "TRUE AIM"
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextSize = 19
+TitleLabel.TextColor3 = UiPaletteTable.text
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.ZIndex = 101
 TitleLabel.Parent = MenuFrame
@@ -380,8 +398,8 @@ PlayerListRuntimeTable.frame.Position = UDim2.new(
 	MenuFrame.Position.Y.Scale,
 	MenuFrame.Position.Y.Offset
 )
-PlayerListRuntimeTable.frame.BackgroundColor3 = Color3.fromRGB(14, 19, 27)
-PlayerListRuntimeTable.frame.BackgroundTransparency = 0.04
+PlayerListRuntimeTable.frame.BackgroundColor3 = UiPaletteTable.panel
+PlayerListRuntimeTable.frame.BackgroundTransparency = 0
 PlayerListRuntimeTable.frame.BorderSizePixel = 0
 PlayerListRuntimeTable.frame.ClipsDescendants = true
 PlayerListRuntimeTable.frame.Active = true
@@ -393,38 +411,39 @@ PlayerListScaleObject.Name = "ResponsiveScale"
 PlayerListScaleObject.Scale = 1
 PlayerListScaleObject.Parent = PlayerListRuntimeTable.frame
 
-PlayerListBackgroundGradient = Instance.new("UIGradient")
-PlayerListBackgroundGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(21, 29, 41)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(9, 13, 19)),
-})
-PlayerListBackgroundGradient.Rotation = 90
-PlayerListBackgroundGradient.Parent = PlayerListRuntimeTable.frame
+PlayerListAccentFrame = Instance.new("Frame")
+PlayerListAccentFrame.Name = "AccentFrame"
+PlayerListAccentFrame.Size = UDim2.new(1, 0, 0, 3)
+PlayerListAccentFrame.Position = UDim2.new(0, 0, 0, 0)
+PlayerListAccentFrame.BackgroundColor3 = UiPaletteTable.success
+PlayerListAccentFrame.BorderSizePixel = 0
+PlayerListAccentFrame.ZIndex = 102
+PlayerListAccentFrame.Parent = PlayerListRuntimeTable.frame
 
 PlayerListRuntimeTable.titleLabel = Instance.new("TextLabel")
 PlayerListRuntimeTable.titleLabel.Name = "PlayerListTitleLabel"
-PlayerListRuntimeTable.titleLabel.Size = UDim2.new(1, -12, 0, 24)
-PlayerListRuntimeTable.titleLabel.Position = UDim2.new(0, 6, 0, 4)
+PlayerListRuntimeTable.titleLabel.Size = UDim2.new(1, -20, 0, 24)
+PlayerListRuntimeTable.titleLabel.Position = UDim2.new(0, 10, 0, 5)
 PlayerListRuntimeTable.titleLabel.BackgroundTransparency = 1
 PlayerListRuntimeTable.titleLabel.Text = "Players"
-PlayerListRuntimeTable.titleLabel.Font = Enum.Font.SourceSansBold
+PlayerListRuntimeTable.titleLabel.Font = Enum.Font.GothamBold
 PlayerListRuntimeTable.titleLabel.TextSize = 18
-PlayerListRuntimeTable.titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+PlayerListRuntimeTable.titleLabel.TextColor3 = UiPaletteTable.text
 PlayerListRuntimeTable.titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 PlayerListRuntimeTable.titleLabel.ZIndex = 101
 PlayerListRuntimeTable.titleLabel.Parent = PlayerListRuntimeTable.frame
 
 PlayerListRuntimeTable.statusLabel = Instance.new("TextLabel")
 PlayerListRuntimeTable.statusLabel.Name = "PlayerListStatusLabel"
-PlayerListRuntimeTable.statusLabel.Size = UDim2.new(1, -12, 0, 42)
-PlayerListRuntimeTable.statusLabel.Position = UDim2.new(0, 6, 0, 28)
+PlayerListRuntimeTable.statusLabel.Size = UDim2.new(1, -20, 0, 42)
+PlayerListRuntimeTable.statusLabel.Position = UDim2.new(0, 10, 0, 30)
 PlayerListRuntimeTable.statusLabel.BackgroundTransparency = 1
 PlayerListRuntimeTable.statusLabel.Text = IsBloodZonePlaceBoolean
 	and "LMB: priority | RMB: whitelist\nTags: TGT P W SAFE DOWN SHLD GUN"
 	or "LMB: priority | RMB: whitelist\nP: priority | W: whitelist"
-PlayerListRuntimeTable.statusLabel.Font = Enum.Font.SourceSans
+PlayerListRuntimeTable.statusLabel.Font = Enum.Font.Gotham
 PlayerListRuntimeTable.statusLabel.TextSize = 14
-PlayerListRuntimeTable.statusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+PlayerListRuntimeTable.statusLabel.TextColor3 = UiPaletteTable.mutedText
 PlayerListRuntimeTable.statusLabel.TextWrapped = true
 PlayerListRuntimeTable.statusLabel.TextXAlignment = Enum.TextXAlignment.Left
 PlayerListRuntimeTable.statusLabel.TextYAlignment = Enum.TextYAlignment.Top
@@ -433,9 +452,9 @@ PlayerListRuntimeTable.statusLabel.Parent = PlayerListRuntimeTable.frame
 
 PlayerListRuntimeTable.scrollFrame = Instance.new("ScrollingFrame")
 PlayerListRuntimeTable.scrollFrame.Name = "PlayerListScrollFrame"
-PlayerListRuntimeTable.scrollFrame.Size = UDim2.new(1, -12, 1, -78)
-PlayerListRuntimeTable.scrollFrame.Position = UDim2.new(0, 6, 0, 72)
-PlayerListRuntimeTable.scrollFrame.BackgroundColor3 = Color3.fromRGB(26, 26, 26)
+PlayerListRuntimeTable.scrollFrame.Size = UDim2.new(1, -20, 1, -82)
+PlayerListRuntimeTable.scrollFrame.Position = UDim2.new(0, 10, 0, 76)
+PlayerListRuntimeTable.scrollFrame.BackgroundColor3 = UiPaletteTable.surface
 PlayerListRuntimeTable.scrollFrame.BorderSizePixel = 0
 PlayerListRuntimeTable.scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 PlayerListRuntimeTable.scrollFrame.ScrollBarThickness = 6
@@ -454,7 +473,7 @@ DebugFrame = Instance.new("Frame")
 DebugFrame.Name = "DebugFrame"
 DebugFrame.Size = UDim2.new(0, 300, 0, 72)
 DebugFrame.Position = UDim2.new(0, 260, 0, 200)
-DebugFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+DebugFrame.BackgroundColor3 = UiPaletteTable.panel
 DebugFrame.BorderSizePixel = 0
 DebugFrame.ClipsDescendants = true
 DebugFrame.Visible = DebugModeEnabledBoolean
@@ -487,6 +506,16 @@ function ApplyAimbotUiDecoration(GuiObject, CornerRadiusNumber, StrokeColor3)
 	end
 	if GuiObject.IsA(GuiObject, "TextButton") then
 		GuiObject.AutoButtonColor = false
+		GuiObject.TextXAlignment = Enum.TextXAlignment.Left
+		GuiObject.TextYAlignment = Enum.TextYAlignment.Center
+		local PaddingObject = GuiObject.FindFirstChild(GuiObject, "AimbotPadding")
+		if not PaddingObject then
+			PaddingObject = Instance.new("UIPadding")
+			PaddingObject.Name = "AimbotPadding"
+			PaddingObject.Parent = GuiObject
+		end
+		PaddingObject.PaddingLeft = UDim.new(0, 10)
+		PaddingObject.PaddingRight = UDim.new(0, 8)
 	end
 
 	local CornerObject = GuiObject.FindFirstChild(GuiObject, "AimbotCorner")
@@ -508,9 +537,23 @@ function ApplyAimbotUiDecoration(GuiObject, CornerRadiusNumber, StrokeColor3)
 	StrokeObject.Transparency = 0.35
 end
 
-ApplyAimbotUiDecoration(MenuFrame, 8, Color3.fromRGB(55, 105, 155))
-ApplyAimbotUiDecoration(PlayerListRuntimeTable.frame, 8, Color3.fromRGB(55, 105, 155))
-ApplyAimbotUiDecoration(DebugFrame, 8, Color3.fromRGB(140, 110, 55))
+function SetAimbotUiButtonAppearance(ButtonObject, TextString, BackgroundColor3, StrokeColor3)
+	if not ButtonObject then
+		return
+	end
+
+	ButtonObject.BackgroundColor3 = BackgroundColor3 or UiPaletteTable.surface
+	ButtonObject.Text = TextString or ""
+	local StrokeObject = ButtonObject.FindFirstChild(ButtonObject, "AimbotStroke")
+	if StrokeObject then
+		StrokeObject.Color = StrokeColor3 or UiPaletteTable.border
+	end
+end
+
+ApplyAimbotUiDecoration(MenuFrame, 8, UiPaletteTable.border)
+ApplyAimbotUiDecoration(PlayerListRuntimeTable.frame, 8, UiPaletteTable.border)
+ApplyAimbotUiDecoration(PlayerListRuntimeTable.scrollFrame, 5, UiPaletteTable.border)
+ApplyAimbotUiDecoration(DebugFrame, 8, UiPaletteTable.warning)
 
 local function SafeDebugName(Value)
 	if Value == nil then
@@ -1424,8 +1467,8 @@ end
 function PlayerListRuntimeTable.GetEntryState(PlayerObject, CharacterModel, IsCurrentTargetBoolean)
 	local NowNumber = tick()
 	local StateTags = {}
-	local BackgroundColor3 = Color3.fromRGB(42, 42, 42)
-	local TextColor3 = Color3.fromRGB(255, 255, 255)
+	local BackgroundColor3 = UiPaletteTable.surface
+	local TextColor3 = UiPaletteTable.text
 	local PriorityBoolean = PlayerListRuntimeTable.IsPriorityPlayer(PlayerObject)
 	local WhitelistedBoolean = PlayerListRuntimeTable.IsPlayerWhitelisted(PlayerObject)
 	local CachedEntryTable = PlayerListRuntimeTable.entryStateCache and PlayerListRuntimeTable.entryStateCache[PlayerObject] or nil
@@ -1512,28 +1555,28 @@ function PlayerListRuntimeTable.GetEntryState(PlayerObject, CharacterModel, IsCu
 	end
 
 	if IsBloodZonePlaceBoolean and IsCurrentTargetBoolean then
-		BackgroundColor3 = Color3.fromRGB(140, 100, 0)
-		TextColor3 = Color3.fromRGB(255, 245, 170)
+		BackgroundColor3 = UiPaletteTable.warning
+		TextColor3 = Color3.fromRGB(255, 248, 220)
 	elseif PriorityBoolean then
-		BackgroundColor3 = Color3.fromRGB(0, 110, 70)
+		BackgroundColor3 = UiPaletteTable.success
 	elseif WhitelistedBoolean then
-		BackgroundColor3 = Color3.fromRGB(110, 45, 45)
-		TextColor3 = Color3.fromRGB(255, 210, 210)
+		BackgroundColor3 = UiPaletteTable.danger
+		TextColor3 = Color3.fromRGB(255, 224, 226)
 	elseif IsBloodZonePlaceBoolean and SafeBoolean then
-		BackgroundColor3 = Color3.fromRGB(30, 65, 110)
-		TextColor3 = Color3.fromRGB(210, 230, 255)
+		BackgroundColor3 = UiPaletteTable.info
+		TextColor3 = Color3.fromRGB(224, 237, 255)
 	elseif IsBloodZonePlaceBoolean and (DeadBoolean or CarriedBoolean or EscapedBoolean) then
-		BackgroundColor3 = Color3.fromRGB(55, 55, 55)
-		TextColor3 = Color3.fromRGB(190, 190, 190)
+		BackgroundColor3 = UiPaletteTable.surfaceDisabled
+		TextColor3 = UiPaletteTable.mutedText
 	elseif IsBloodZonePlaceBoolean and DownedBoolean then
-		BackgroundColor3 = Color3.fromRGB(120, 80, 20)
-		TextColor3 = Color3.fromRGB(255, 230, 180)
+		BackgroundColor3 = UiPaletteTable.warning
+		TextColor3 = Color3.fromRGB(255, 236, 196)
 	elseif IsBloodZonePlaceBoolean and HasShieldBoolean then
-		BackgroundColor3 = Color3.fromRGB(55, 70, 85)
-		TextColor3 = Color3.fromRGB(225, 235, 255)
+		BackgroundColor3 = UiPaletteTable.surfaceMuted
+		TextColor3 = Color3.fromRGB(225, 235, 247)
 	elseif IsBloodZonePlaceBoolean and ArmedBoolean then
-		BackgroundColor3 = Color3.fromRGB(45, 75, 45)
-		TextColor3 = Color3.fromRGB(220, 255, 220)
+		BackgroundColor3 = UiPaletteTable.success
+		TextColor3 = Color3.fromRGB(225, 255, 240)
 	end
 
 	local StateTable = {
@@ -1565,7 +1608,7 @@ function PlayerListRuntimeTable.GetOrCreateEmptyLabel()
 	EmptyLabel.Size = UDim2.new(1, -4, 0, 28)
 	EmptyLabel.BackgroundTransparency = 1
 	EmptyLabel.Text = "No other players"
-	EmptyLabel.Font = Enum.Font.SourceSans
+	EmptyLabel.Font = Enum.Font.Gotham
 	EmptyLabel.TextSize = 15
 	EmptyLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
 	EmptyLabel.ZIndex = 102
@@ -1587,7 +1630,7 @@ function PlayerListRuntimeTable.GetOrCreateEntryButton(PlayerObject)
 	EntryButton.BackgroundColor3 = Color3.fromRGB(42, 42, 42)
 	EntryButton.BorderSizePixel = 0
 	EntryButton.AutoButtonColor = false
-	EntryButton.Font = Enum.Font.SourceSans
+	EntryButton.Font = Enum.Font.Gotham
 	EntryButton.TextSize = 15
 	EntryButton.TextXAlignment = Enum.TextXAlignment.Left
 	EntryButton.Text = ""
@@ -1601,7 +1644,7 @@ function PlayerListRuntimeTable.GetOrCreateEntryButton(PlayerObject)
 	NameLabel.Size = UDim2.new(1, -8, 0, 15)
 	NameLabel.Position = UDim2.new(0, 4, 0, 1)
 	NameLabel.BackgroundTransparency = 1
-	NameLabel.Font = Enum.Font.SourceSans
+	NameLabel.Font = Enum.Font.Gotham
 	NameLabel.TextSize = 15
 	NameLabel.TextXAlignment = Enum.TextXAlignment.Left
 	NameLabel.TextTruncate = Enum.TextTruncate.AtEnd
@@ -5562,9 +5605,9 @@ local function CreateSectionHeader(SectionTitleString, YOffsetNumber)
 	HeaderLabel.Size = UDim2.new(0, 120, 1, 0)
 	HeaderLabel.BackgroundTransparency = 1
 	HeaderLabel.Text = SectionTitleString
-	HeaderLabel.Font = Enum.Font.SourceSansSemibold
+HeaderLabel.Font = Enum.Font.GothamBold
 	HeaderLabel.TextSize = 14
-	HeaderLabel.TextColor3 = Color3.fromRGB(0, 200, 200)
+	HeaderLabel.TextColor3 = UiPaletteTable.accent
 	HeaderLabel.TextXAlignment = Enum.TextXAlignment.Left
 	HeaderLabel.ZIndex = 102
 	HeaderLabel.Parent = HeaderFrame
@@ -5573,7 +5616,7 @@ local function CreateSectionHeader(SectionTitleString, YOffsetNumber)
 	Divider.Name = SectionTitleString .. "Divider"
 	Divider.Size = UDim2.new(1, -125, 0, 1)
 	Divider.Position = UDim2.new(0, 125, 0.5, 0)
-	Divider.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	Divider.BackgroundColor3 = UiPaletteTable.border
 	Divider.BorderSizePixel = 0
 	Divider.ZIndex = 101
 	Divider.Parent = HeaderFrame
@@ -5587,9 +5630,9 @@ SmoothingValueLabel.Size = UDim2.new(1, -10, 0, 20)
 SmoothingValueLabel.Position = UDim2.new(0, 5, 0, 52)
 SmoothingValueLabel.BackgroundTransparency = 1
 SmoothingValueLabel.TextXAlignment = Enum.TextXAlignment.Left
-SmoothingValueLabel.Font = Enum.Font.SourceSans
+SmoothingValueLabel.Font = Enum.Font.Gotham
 SmoothingValueLabel.TextSize = 16
-SmoothingValueLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+SmoothingValueLabel.TextColor3 = UiPaletteTable.text
 SmoothingValueLabel.Text = "Smoothing: " .. string.format("%.2f", AimbotSmoothingNumber)
 SmoothingValueLabel.ZIndex = 101
 SmoothingValueLabel.Parent = MenuFrame
@@ -5626,9 +5669,9 @@ FovValueLabel.Size = UDim2.new(1, -10, 0, 20)
 FovValueLabel.Position = UDim2.new(0, 5, 0, 102)
 FovValueLabel.BackgroundTransparency = 1
 FovValueLabel.TextXAlignment = Enum.TextXAlignment.Left
-FovValueLabel.Font = Enum.Font.SourceSans
+FovValueLabel.Font = Enum.Font.Gotham
 FovValueLabel.TextSize = 16
-FovValueLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+FovValueLabel.TextColor3 = UiPaletteTable.text
 FovValueLabel.Text = "FOV Radius: " .. tostring(FovCircle.Radius)
 FovValueLabel.ZIndex = 101
 FovValueLabel.Parent = MenuFrame
@@ -5666,7 +5709,7 @@ HeadshotToggleButton.Position = UDim2.new(0, 10, 0, 172)
 HeadshotToggleButton.BackgroundColor3 = Color3.fromRGB(100, 0, 0)
 HeadshotToggleButton.BorderSizePixel = 0
 HeadshotToggleButton.Text = "Headshot Priority: OFF"
-HeadshotToggleButton.Font = Enum.Font.SourceSans
+HeadshotToggleButton.Font = Enum.Font.Gotham
 HeadshotToggleButton.TextSize = 16
 HeadshotToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 HeadshotToggleButton.ZIndex = 101
@@ -5679,7 +5722,7 @@ AutoFireToggleButton.Position = UDim2.new(0, 10, 0, 196)
 AutoFireToggleButton.BackgroundColor3 = Color3.fromRGB(0, 60, 120)
 AutoFireToggleButton.BorderSizePixel = 0
 AutoFireToggleButton.Text = "Auto Fire: ON"
-AutoFireToggleButton.Font = Enum.Font.SourceSans
+AutoFireToggleButton.Font = Enum.Font.Gotham
 AutoFireToggleButton.TextSize = 16
 AutoFireToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 AutoFireToggleButton.ZIndex = 101
@@ -5692,7 +5735,7 @@ VisibleCheckToggleButton.Position = UDim2.new(0, 10, 0, 220)
 VisibleCheckToggleButton.BackgroundColor3 = Color3.fromRGB(0, 80, 80)
 VisibleCheckToggleButton.BorderSizePixel = 0
 VisibleCheckToggleButton.Text = "Visible Check: ON"
-VisibleCheckToggleButton.Font = Enum.Font.SourceSans
+VisibleCheckToggleButton.Font = Enum.Font.Gotham
 VisibleCheckToggleButton.TextSize = 16
 VisibleCheckToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 VisibleCheckToggleButton.ZIndex = 101
@@ -5705,7 +5748,7 @@ TargetSegmentationToggleButton.Position = UDim2.new(0, 10, 0, 244)
 TargetSegmentationToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 TargetSegmentationToggleButton.BorderSizePixel = 0
 TargetSegmentationToggleButton.Text = "Sectioning: OFF"
-TargetSegmentationToggleButton.Font = Enum.Font.SourceSans
+TargetSegmentationToggleButton.Font = Enum.Font.Gotham
 TargetSegmentationToggleButton.TextSize = 16
 TargetSegmentationToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 TargetSegmentationToggleButton.ZIndex = 101
@@ -5718,7 +5761,7 @@ FovToggleButton.Position = UDim2.new(0, 10, 0, 300)
 FovToggleButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
 FovToggleButton.BorderSizePixel = 0
 FovToggleButton.Text = "FOV Circle: ON"
-FovToggleButton.Font = Enum.Font.SourceSans
+FovToggleButton.Font = Enum.Font.Gotham
 FovToggleButton.TextSize = 16
 FovToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 FovToggleButton.ZIndex = 101
@@ -5731,7 +5774,7 @@ TargetLineToggleButton.Position = UDim2.new(0, 10, 0, 324)
 TargetLineToggleButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
 TargetLineToggleButton.BorderSizePixel = 0
 TargetLineToggleButton.Text = "Target Line: ON"
-TargetLineToggleButton.Font = Enum.Font.SourceSans
+TargetLineToggleButton.Font = Enum.Font.Gotham
 TargetLineToggleButton.TextSize = 16
 TargetLineToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 TargetLineToggleButton.ZIndex = 101
@@ -5744,7 +5787,7 @@ LockKeyToggleButton.Position = UDim2.new(0, 10, 0, 376)
 LockKeyToggleButton.BackgroundColor3 = Color3.fromRGB(80, 80, 0)
 LockKeyToggleButton.BorderSizePixel = 0
 LockKeyToggleButton.Text = "Lock Key: RMB"
-LockKeyToggleButton.Font = Enum.Font.SourceSans
+LockKeyToggleButton.Font = Enum.Font.Gotham
 LockKeyToggleButton.TextSize = 16
 LockKeyToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 LockKeyToggleButton.ZIndex = 101
@@ -5757,7 +5800,7 @@ HookMethodToggleButton.Position = UDim2.new(0, 10, 0, 400)
 HookMethodToggleButton.BackgroundColor3 = Color3.fromRGB(80, 40, 120)
 HookMethodToggleButton.BorderSizePixel = 0
 HookMethodToggleButton.Text = "Method: Hook"
-HookMethodToggleButton.Font = Enum.Font.SourceSans
+HookMethodToggleButton.Font = Enum.Font.Gotham
 HookMethodToggleButton.TextSize = 16
 HookMethodToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 HookMethodToggleButton.ZIndex = 101
@@ -5770,7 +5813,7 @@ StickyAimToggleButton.Position = UDim2.new(0, 10, 0, 424)
 StickyAimToggleButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
 StickyAimToggleButton.BorderSizePixel = 0
 StickyAimToggleButton.Text = "Sticky Aim: OFF"
-StickyAimToggleButton.Font = Enum.Font.SourceSans
+StickyAimToggleButton.Font = Enum.Font.Gotham
 StickyAimToggleButton.TextSize = 16
 StickyAimToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 StickyAimToggleButton.ZIndex = 101
@@ -5782,9 +5825,9 @@ HookHitChanceValueLabel.Size = UDim2.new(1, -10, 0, 20)
 HookHitChanceValueLabel.Position = UDim2.new(0, 5, 0, 448)
 HookHitChanceValueLabel.BackgroundTransparency = 1
 HookHitChanceValueLabel.TextXAlignment = Enum.TextXAlignment.Left
-HookHitChanceValueLabel.Font = Enum.Font.SourceSans
+HookHitChanceValueLabel.Font = Enum.Font.Gotham
 HookHitChanceValueLabel.TextSize = 16
-HookHitChanceValueLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+HookHitChanceValueLabel.TextColor3 = UiPaletteTable.text
 HookHitChanceValueLabel.Text = "Hook Hit Chance: " .. tostring(math.floor(NormalHookHitChanceNumber + 0.5)) .. "%"
 HookHitChanceValueLabel.ZIndex = 101
 HookHitChanceValueLabel.Parent = MenuFrame
@@ -5826,7 +5869,7 @@ if IsBloodZonePlaceBoolean then
 	SillyModeToggleButton.BackgroundColor3 = Color3.fromRGB(80, 30, 80)
 	SillyModeToggleButton.BorderSizePixel = 0
 	SillyModeToggleButton.Text = "Silly Mode: OFF"
-	SillyModeToggleButton.Font = Enum.Font.SourceSans
+	SillyModeToggleButton.Font = Enum.Font.Gotham
 	SillyModeToggleButton.TextSize = 16
 	SillyModeToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 	SillyModeToggleButton.ZIndex = 101
@@ -5839,7 +5882,7 @@ if IsBloodZonePlaceBoolean then
 	ShieldModeToggleButton.BackgroundColor3 = Color3.fromRGB(55, 55, 75)
 	ShieldModeToggleButton.BorderSizePixel = 0
 	ShieldModeToggleButton.Text = "Shield Mode: LOCKED"
-	ShieldModeToggleButton.Font = Enum.Font.SourceSans
+	ShieldModeToggleButton.Font = Enum.Font.Gotham
 	ShieldModeToggleButton.TextSize = 16
 	ShieldModeToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 	ShieldModeToggleButton.ZIndex = 101
@@ -5852,36 +5895,36 @@ if IsBloodZonePlaceBoolean then
 	SillySkyVisibilityToggleButton.BackgroundColor3 = Color3.fromRGB(45, 65, 90)
 	SillySkyVisibilityToggleButton.BorderSizePixel = 0
 	SillySkyVisibilityToggleButton.Text = "Sky Vis Check: LOCKED"
-	SillySkyVisibilityToggleButton.Font = Enum.Font.SourceSans
+	SillySkyVisibilityToggleButton.Font = Enum.Font.Gotham
 	SillySkyVisibilityToggleButton.TextSize = 16
 	SillySkyVisibilityToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 	SillySkyVisibilityToggleButton.ZIndex = 101
 	SillySkyVisibilityToggleButton.Parent = MenuFrame
 end
 
-ApplyAimbotUiDecoration(SmoothSliderBackFrame, 4, Color3.fromRGB(55, 105, 155))
-ApplyAimbotUiDecoration(SmoothSliderKnobFrame, 4, Color3.fromRGB(170, 205, 235))
-ApplyAimbotUiDecoration(FovSliderBackFrame, 4, Color3.fromRGB(55, 135, 105))
-ApplyAimbotUiDecoration(FovSliderKnobFrame, 4, Color3.fromRGB(175, 235, 205))
-ApplyAimbotUiDecoration(HookHitChanceSliderBackFrame, 4, Color3.fromRGB(145, 115, 45))
-ApplyAimbotUiDecoration(HookHitChanceSliderKnobFrame, 4, Color3.fromRGB(240, 215, 155))
-ApplyAimbotUiDecoration(HeadshotToggleButton, 5, Color3.fromRGB(130, 70, 80))
-ApplyAimbotUiDecoration(AutoFireToggleButton, 5, Color3.fromRGB(55, 115, 175))
-ApplyAimbotUiDecoration(VisibleCheckToggleButton, 5, Color3.fromRGB(45, 140, 140))
-ApplyAimbotUiDecoration(TargetSegmentationToggleButton, 5, Color3.fromRGB(85, 95, 110))
-ApplyAimbotUiDecoration(FovToggleButton, 5, Color3.fromRGB(90, 105, 120))
-ApplyAimbotUiDecoration(TargetLineToggleButton, 5, Color3.fromRGB(90, 105, 120))
-ApplyAimbotUiDecoration(LockKeyToggleButton, 5, Color3.fromRGB(135, 125, 45))
-ApplyAimbotUiDecoration(HookMethodToggleButton, 5, Color3.fromRGB(120, 80, 160))
-ApplyAimbotUiDecoration(StickyAimToggleButton, 5, Color3.fromRGB(95, 105, 120))
+ApplyAimbotUiDecoration(SmoothSliderBackFrame, 4, UiPaletteTable.border)
+ApplyAimbotUiDecoration(SmoothSliderKnobFrame, 4, UiPaletteTable.accent)
+ApplyAimbotUiDecoration(FovSliderBackFrame, 4, UiPaletteTable.border)
+ApplyAimbotUiDecoration(FovSliderKnobFrame, 4, UiPaletteTable.success)
+ApplyAimbotUiDecoration(HookHitChanceSliderBackFrame, 4, UiPaletteTable.border)
+ApplyAimbotUiDecoration(HookHitChanceSliderKnobFrame, 4, UiPaletteTable.warning)
+ApplyAimbotUiDecoration(HeadshotToggleButton, 5, UiPaletteTable.success)
+ApplyAimbotUiDecoration(AutoFireToggleButton, 5, UiPaletteTable.info)
+ApplyAimbotUiDecoration(VisibleCheckToggleButton, 5, UiPaletteTable.accent)
+ApplyAimbotUiDecoration(TargetSegmentationToggleButton, 5, UiPaletteTable.border)
+ApplyAimbotUiDecoration(FovToggleButton, 5, UiPaletteTable.accent)
+ApplyAimbotUiDecoration(TargetLineToggleButton, 5, UiPaletteTable.success)
+ApplyAimbotUiDecoration(LockKeyToggleButton, 5, UiPaletteTable.warning)
+ApplyAimbotUiDecoration(HookMethodToggleButton, 5, UiPaletteTable.violet)
+ApplyAimbotUiDecoration(StickyAimToggleButton, 5, UiPaletteTable.border)
 if SillyModeToggleButton then
-	ApplyAimbotUiDecoration(SillyModeToggleButton, 5, Color3.fromRGB(135, 70, 145))
+	ApplyAimbotUiDecoration(SillyModeToggleButton, 5, UiPaletteTable.violet)
 end
 if ShieldModeToggleButton then
-	ApplyAimbotUiDecoration(ShieldModeToggleButton, 5, Color3.fromRGB(85, 100, 145))
+	ApplyAimbotUiDecoration(ShieldModeToggleButton, 5, UiPaletteTable.info)
 end
 if SillySkyVisibilityToggleButton then
-	ApplyAimbotUiDecoration(SillySkyVisibilityToggleButton, 5, Color3.fromRGB(70, 115, 155))
+	ApplyAimbotUiDecoration(SillySkyVisibilityToggleButton, 5, UiPaletteTable.accent)
 end
 
 CreateSectionHeader("Targeting", 150)
@@ -5890,105 +5933,81 @@ CreateSectionHeader("Behavior", 354)
 
 local function UpdateHeadshotButtonAppearance()
 	if IsSillyModeBehaviorActive() then
-		HeadshotToggleButton.BackgroundColor3 = Color3.fromRGB(0, 150, 80)
-		HeadshotToggleButton.Text = "Headshot Priority: ON (Silly)"
+		SetAimbotUiButtonAppearance(HeadshotToggleButton, "Headshot Priority: ON (Silly)", UiPaletteTable.success, UiPaletteTable.success)
 	elseif HeadshotPriorityBoolean then
-		HeadshotToggleButton.BackgroundColor3 = Color3.fromRGB(0, 130, 0)
-		HeadshotToggleButton.Text = "Headshot Priority: ON"
+		SetAimbotUiButtonAppearance(HeadshotToggleButton, "Headshot Priority: ON", UiPaletteTable.success, UiPaletteTable.success)
 	else
-		HeadshotToggleButton.BackgroundColor3 = Color3.fromRGB(100, 0, 0)
-		HeadshotToggleButton.Text = "Headshot Priority: OFF"
+		SetAimbotUiButtonAppearance(HeadshotToggleButton, "Headshot Priority: OFF", UiPaletteTable.surfaceMuted, UiPaletteTable.danger)
 	end
 end
 
 local function UpdateAutoFireButtonAppearance()
 	if IsSillyModeBehaviorActive() then
-		AutoFireToggleButton.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
-		AutoFireToggleButton.Text = "Auto Fire: ON (Silly)"
+		SetAimbotUiButtonAppearance(AutoFireToggleButton, "Auto Fire: ON (Silly)", UiPaletteTable.info, UiPaletteTable.info)
 	elseif AutoFireEnabledBoolean then
-		AutoFireToggleButton.BackgroundColor3 = Color3.fromRGB(0, 120, 220)
-		AutoFireToggleButton.Text = "Auto Fire: ON"
+		SetAimbotUiButtonAppearance(AutoFireToggleButton, "Auto Fire: ON", UiPaletteTable.info, UiPaletteTable.info)
 	else
-		AutoFireToggleButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-		AutoFireToggleButton.Text = "Auto Fire: OFF"
+		SetAimbotUiButtonAppearance(AutoFireToggleButton, "Auto Fire: OFF", UiPaletteTable.surfaceMuted, UiPaletteTable.border)
 	end
 end
 
 local function UpdateVisibleCheckButtonAppearance()
 	if IsSillyModeBehaviorActive() then
-		VisibleCheckToggleButton.BackgroundColor3 = Color3.fromRGB(0, 150, 150)
-		VisibleCheckToggleButton.Text = "Visible Check: ON (Silly)"
+		SetAimbotUiButtonAppearance(VisibleCheckToggleButton, "Visible Check: ON (Silly)", UiPaletteTable.accentSoft, UiPaletteTable.accent)
 	elseif VisibleCheckEnabledBoolean then
-		VisibleCheckToggleButton.BackgroundColor3 = Color3.fromRGB(0, 120, 120)
-		VisibleCheckToggleButton.Text = "Visible Check: ON"
+		SetAimbotUiButtonAppearance(VisibleCheckToggleButton, "Visible Check: ON", UiPaletteTable.accentSoft, UiPaletteTable.accent)
 	else
-		VisibleCheckToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-		VisibleCheckToggleButton.Text = "Visible Check: OFF"
+		SetAimbotUiButtonAppearance(VisibleCheckToggleButton, "Visible Check: OFF", UiPaletteTable.surfaceMuted, UiPaletteTable.border)
 	end
 end
 
 local function UpdateTargetSegmentationButtonAppearance()
 	if IsSillyModeBehaviorActive() then
-		TargetSegmentationToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-		TargetSegmentationToggleButton.Text = "Sectioning: OFF (Silly)"
+		SetAimbotUiButtonAppearance(TargetSegmentationToggleButton, "Sectioning: OFF (Silly)", UiPaletteTable.surfaceDisabled, UiPaletteTable.border)
 	elseif TargetSegmentationEnabledBoolean then
-		TargetSegmentationToggleButton.BackgroundColor3 = Color3.fromRGB(0, 120, 120)
-		TargetSegmentationToggleButton.Text = "Sectioning: ON"
+		SetAimbotUiButtonAppearance(TargetSegmentationToggleButton, "Sectioning: ON", UiPaletteTable.accentSoft, UiPaletteTable.accent)
 	else
-		TargetSegmentationToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-		TargetSegmentationToggleButton.Text = "Sectioning: OFF"
+		SetAimbotUiButtonAppearance(TargetSegmentationToggleButton, "Sectioning: OFF", UiPaletteTable.surfaceMuted, UiPaletteTable.border)
 	end
 end
 
 local function UpdateFovToggleButtonAppearance()
 	if IsSillyModeBehaviorActive() then
-		FovToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-		FovToggleButton.Text = "FOV Circle: OFF (Silly)"
+		SetAimbotUiButtonAppearance(FovToggleButton, "FOV Circle: OFF (Silly)", UiPaletteTable.surfaceDisabled, UiPaletteTable.border)
 	elseif ShowFovCircleBoolean then
-		FovToggleButton.BackgroundColor3 = Color3.fromRGB(0, 120, 120)
-		FovToggleButton.Text = "FOV Circle: ON"
+		SetAimbotUiButtonAppearance(FovToggleButton, "FOV Circle: ON", UiPaletteTable.accentSoft, UiPaletteTable.accent)
 	else
-		FovToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-		FovToggleButton.Text = "FOV Circle: OFF"
+		SetAimbotUiButtonAppearance(FovToggleButton, "FOV Circle: OFF", UiPaletteTable.surfaceMuted, UiPaletteTable.border)
 	end
 end
 
 local function UpdateTargetLineToggleButtonAppearance()
 	if ShowTargetLineBoolean then
-		TargetLineToggleButton.BackgroundColor3 = Color3.fromRGB(0, 120, 120)
-		TargetLineToggleButton.Text = "Target Line: ON"
+		SetAimbotUiButtonAppearance(TargetLineToggleButton, "Target Line: ON", UiPaletteTable.success, UiPaletteTable.success)
 	else
-		TargetLineToggleButton.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-		TargetLineToggleButton.Text = "Target Line: OFF"
+		SetAimbotUiButtonAppearance(TargetLineToggleButton, "Target Line: OFF", UiPaletteTable.surfaceMuted, UiPaletteTable.border)
 	end
 end
 
 local function UpdateHookMethodButtonAppearance()
 	if IsSillyModeBehaviorActive() then
-		HookMethodToggleButton.BackgroundColor3 = Color3.fromRGB(180, 70, 220)
-		HookMethodToggleButton.Text = "Method: Hook (Silly)"
+		SetAimbotUiButtonAppearance(HookMethodToggleButton, "Method: Hook (Silly)", UiPaletteTable.violet, UiPaletteTable.violet)
 	elseif UseHookMethodBoolean and UseCameraMethodBoolean then
-		HookMethodToggleButton.BackgroundColor3 = Color3.fromRGB(0, 150, 150)
-		HookMethodToggleButton.Text = "Method: Both"
+		SetAimbotUiButtonAppearance(HookMethodToggleButton, "Method: Both", UiPaletteTable.accentSoft, UiPaletteTable.accent)
 	elseif UseHookMethodBoolean then
-		HookMethodToggleButton.BackgroundColor3 = Color3.fromRGB(150, 70, 200)
-		HookMethodToggleButton.Text = "Method: Hook"
+		SetAimbotUiButtonAppearance(HookMethodToggleButton, "Method: Hook", UiPaletteTable.violet, UiPaletteTable.violet)
 	else
-		HookMethodToggleButton.BackgroundColor3 = Color3.fromRGB(80, 40, 120)
-		HookMethodToggleButton.Text = "Method: Camera"
+		SetAimbotUiButtonAppearance(HookMethodToggleButton, "Method: Camera", UiPaletteTable.surfaceMuted, UiPaletteTable.border)
 	end
 end
 
 local function UpdateStickyAimButtonAppearance()
 	if IsSillyModeBehaviorActive() then
-		StickyAimToggleButton.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
-		StickyAimToggleButton.Text = "Sticky Aim: LOCKED (Silly)"
+		SetAimbotUiButtonAppearance(StickyAimToggleButton, "Sticky Aim: LOCKED (Silly)", UiPaletteTable.surfaceDisabled, UiPaletteTable.border)
 	elseif StickyAimEnabledBoolean then
-		StickyAimToggleButton.BackgroundColor3 = Color3.fromRGB(0, 120, 90)
-		StickyAimToggleButton.Text = "Sticky Aim: ON"
+		SetAimbotUiButtonAppearance(StickyAimToggleButton, "Sticky Aim: ON", UiPaletteTable.success, UiPaletteTable.success)
 	else
-		StickyAimToggleButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-		StickyAimToggleButton.Text = "Sticky Aim: OFF"
+		SetAimbotUiButtonAppearance(StickyAimToggleButton, "Sticky Aim: OFF", UiPaletteTable.surfaceMuted, UiPaletteTable.border)
 	end
 end
 
@@ -5998,15 +6017,15 @@ local function UpdateHookHitChanceSliderAppearance()
 	RatioNumber = math.clamp(RatioNumber, 0, 1)
 
 	if IsSillyModeBehaviorActive() then
-		HookHitChanceValueLabel.TextColor3 = Color3.fromRGB(145, 145, 145)
+		HookHitChanceValueLabel.TextColor3 = UiPaletteTable.mutedText
 		HookHitChanceValueLabel.Text = "Hook Hit Chance: " .. tostring(math.floor(HitChanceNumber + 0.5)) .. "% (Locked in Silly)"
-		HookHitChanceSliderBackFrame.BackgroundColor3 = Color3.fromRGB(52, 52, 52)
-		HookHitChanceSliderFillFrame.BackgroundColor3 = Color3.fromRGB(110, 110, 110)
+		HookHitChanceSliderBackFrame.BackgroundColor3 = UiPaletteTable.surfaceDisabled
+		HookHitChanceSliderFillFrame.BackgroundColor3 = UiPaletteTable.border
 	else
-		HookHitChanceValueLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+		HookHitChanceValueLabel.TextColor3 = UiPaletteTable.text
 		HookHitChanceValueLabel.Text = "Hook Hit Chance: " .. tostring(math.floor(HitChanceNumber + 0.5)) .. "%"
-		HookHitChanceSliderBackFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-		HookHitChanceSliderFillFrame.BackgroundColor3 = Color3.fromRGB(220, 165, 0)
+		HookHitChanceSliderBackFrame.BackgroundColor3 = UiPaletteTable.surfaceMuted
+		HookHitChanceSliderFillFrame.BackgroundColor3 = UiPaletteTable.warning
 	end
 
 	local KnobWidthNumber = HookHitChanceSliderKnobFrame.AbsoluteSize.X
@@ -6028,21 +6047,17 @@ end
 
 local function UpdateLockKeyButtonAppearance()
 	if IsSillyModeBehaviorActive() then
-		LockKeyToggleButton.BackgroundColor3 = Color3.fromRGB(180, 80, 0)
-		LockKeyToggleButton.Text = "Lock Key: Always (Silly)"
+		SetAimbotUiButtonAppearance(LockKeyToggleButton, "Lock Key: Always (Silly)", UiPaletteTable.warning, UiPaletteTable.warning)
 		return
 	end
 
 	local LockKeyModeString = GetCurrentLockKeyMode()
 	if LockKeyModeString == "Always" then
-		LockKeyToggleButton.BackgroundColor3 = Color3.fromRGB(180, 80, 0)
-		LockKeyToggleButton.Text = "Lock Key: Always"
+		SetAimbotUiButtonAppearance(LockKeyToggleButton, "Lock Key: Always", UiPaletteTable.warning, UiPaletteTable.warning)
 	elseif LockKeyModeString == "E" then
-		LockKeyToggleButton.BackgroundColor3 = Color3.fromRGB(0, 130, 130)
-		LockKeyToggleButton.Text = "Lock Key: E"
+		SetAimbotUiButtonAppearance(LockKeyToggleButton, "Lock Key: E", UiPaletteTable.accentSoft, UiPaletteTable.accent)
 	else
-		LockKeyToggleButton.BackgroundColor3 = Color3.fromRGB(80, 80, 0)
-		LockKeyToggleButton.Text = "Lock Key: RMB"
+		SetAimbotUiButtonAppearance(LockKeyToggleButton, "Lock Key: RMB", UiPaletteTable.surfaceMuted, UiPaletteTable.border)
 	end
 end
 
@@ -6052,14 +6067,11 @@ local function UpdateSillyModeButtonAppearance()
 	end
 
 	if IsSillyModeBehaviorActive() then
-		SillyModeToggleButton.BackgroundColor3 = Color3.fromRGB(190, 60, 190)
-		SillyModeToggleButton.Text = "Silly Mode: ON"
+		SetAimbotUiButtonAppearance(SillyModeToggleButton, "Silly Mode: ON", UiPaletteTable.violet, UiPaletteTable.violet)
 	elseif IsSillyModeEnabled() then
-		SillyModeToggleButton.BackgroundColor3 = Color3.fromRGB(130, 45, 130)
-		SillyModeToggleButton.Text = "Silly Mode: ARMED (Need Tool)"
+		SetAimbotUiButtonAppearance(SillyModeToggleButton, "Silly Mode: ARMED (Need Tool)", UiPaletteTable.surfaceMuted, UiPaletteTable.violet)
 	else
-		SillyModeToggleButton.BackgroundColor3 = Color3.fromRGB(80, 30, 80)
-		SillyModeToggleButton.Text = "Silly Mode: OFF"
+		SetAimbotUiButtonAppearance(SillyModeToggleButton, "Silly Mode: OFF", UiPaletteTable.surfaceMuted, UiPaletteTable.border)
 	end
 end
 
@@ -6069,17 +6081,13 @@ local function UpdateShieldModeButtonAppearance()
 	end
 
 	if IsEffectiveShieldModeEnabled() then
-		ShieldModeToggleButton.BackgroundColor3 = Color3.fromRGB(90, 120, 220)
-		ShieldModeToggleButton.Text = "Shield Mode: ON"
+		SetAimbotUiButtonAppearance(ShieldModeToggleButton, "Shield Mode: ON", UiPaletteTable.info, UiPaletteTable.info)
 	elseif ShieldModeEnabledBoolean and IsSillyModeEnabled() then
-		ShieldModeToggleButton.BackgroundColor3 = Color3.fromRGB(70, 90, 170)
-		ShieldModeToggleButton.Text = "Shield Mode: ARMED (Need Tool)"
+		SetAimbotUiButtonAppearance(ShieldModeToggleButton, "Shield Mode: ARMED (Need Tool)", UiPaletteTable.surfaceMuted, UiPaletteTable.info)
 	elseif IsSillyModeEnabled() then
-		ShieldModeToggleButton.BackgroundColor3 = Color3.fromRGB(55, 85, 170)
-		ShieldModeToggleButton.Text = "Shield Mode: OFF"
+		SetAimbotUiButtonAppearance(ShieldModeToggleButton, "Shield Mode: OFF", UiPaletteTable.surfaceMuted, UiPaletteTable.info)
 	else
-		ShieldModeToggleButton.BackgroundColor3 = Color3.fromRGB(55, 55, 75)
-		ShieldModeToggleButton.Text = "Shield Mode: LOCKED (Need Silly)"
+		SetAimbotUiButtonAppearance(ShieldModeToggleButton, "Shield Mode: LOCKED (Need Silly)", UiPaletteTable.surfaceDisabled, UiPaletteTable.border)
 	end
 end
 
@@ -6089,23 +6097,17 @@ local function UpdateSillySkyVisibilityButtonAppearance()
 	end
 
 	if IsSillyModeBehaviorActive() and SillySkyAimEnabledBoolean and not ShieldModeEnabledBoolean and SillySkyVisibilityCheckEnabledBoolean then
-		SillySkyVisibilityToggleButton.BackgroundColor3 = Color3.fromRGB(70, 130, 185)
-		SillySkyVisibilityToggleButton.Text = "Sky Vis Check: ON"
+		SetAimbotUiButtonAppearance(SillySkyVisibilityToggleButton, "Sky Vis Check: ON", UiPaletteTable.accentSoft, UiPaletteTable.accent)
 	elseif not IsSillyModeEnabled() then
-		SillySkyVisibilityToggleButton.BackgroundColor3 = Color3.fromRGB(45, 65, 90)
-		SillySkyVisibilityToggleButton.Text = "Sky Vis Check: LOCKED (Need Silly)"
+		SetAimbotUiButtonAppearance(SillySkyVisibilityToggleButton, "Sky Vis Check: LOCKED (Need Silly)", UiPaletteTable.surfaceDisabled, UiPaletteTable.border)
 	elseif not SillySkyVisibilityCheckEnabledBoolean then
-		SillySkyVisibilityToggleButton.BackgroundColor3 = Color3.fromRGB(45, 75, 105)
-		SillySkyVisibilityToggleButton.Text = "Sky Vis Check: OFF"
+		SetAimbotUiButtonAppearance(SillySkyVisibilityToggleButton, "Sky Vis Check: OFF", UiPaletteTable.surfaceMuted, UiPaletteTable.border)
 	elseif ShieldModeEnabledBoolean then
-		SillySkyVisibilityToggleButton.BackgroundColor3 = Color3.fromRGB(55, 70, 95)
-		SillySkyVisibilityToggleButton.Text = "Sky Vis Check: LOCKED (Shield ON)"
+		SetAimbotUiButtonAppearance(SillySkyVisibilityToggleButton, "Sky Vis Check: LOCKED (Shield ON)", UiPaletteTable.surfaceDisabled, UiPaletteTable.border)
 	elseif not SillySkyAimEnabledBoolean then
-		SillySkyVisibilityToggleButton.BackgroundColor3 = Color3.fromRGB(55, 70, 95)
-		SillySkyVisibilityToggleButton.Text = "Sky Vis Check: LOCKED (Sky Aim OFF)"
+		SetAimbotUiButtonAppearance(SillySkyVisibilityToggleButton, "Sky Vis Check: LOCKED (Sky Aim OFF)", UiPaletteTable.surfaceDisabled, UiPaletteTable.border)
 	else
-		SillySkyVisibilityToggleButton.BackgroundColor3 = Color3.fromRGB(60, 100, 145)
-		SillySkyVisibilityToggleButton.Text = "Sky Vis Check: ARMED (Need Tool)"
+		SetAimbotUiButtonAppearance(SillySkyVisibilityToggleButton, "Sky Vis Check: ARMED (Need Tool)", UiPaletteTable.surfaceMuted, UiPaletteTable.accent)
 	end
 end
 
