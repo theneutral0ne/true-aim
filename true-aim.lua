@@ -6695,9 +6695,11 @@ function UpdatePlayerListCollapseButtonAppearance()
 end
 
 function SetPlayerListCollapsed(CollapsedBoolean)
+	local CurrentPlayerListPosition = PlayerListRuntimeTable.frame.Position
 	PlayerListRuntimeTable.collapsed = CollapsedBoolean == true
 	UpdatePlayerListCollapseButtonAppearance()
 	UpdateResponsiveUiLayout()
+	PlayerListRuntimeTable.frame.Position = CurrentPlayerListPosition
 end
 
 function TogglePlayerListCollapsed()
