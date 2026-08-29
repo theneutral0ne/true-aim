@@ -155,7 +155,7 @@ UseCustomScopeCheckBoolean = CurrentGameIntegrationProfileTable ~= nil
 UseProjectilePredictionBoolean = CurrentGameIntegrationProfileTable ~= nil
 	and CurrentGameIntegrationProfileTable.usesProjectilePrediction == true
 CurrentGameIntegrationMenuHeightNumber = CurrentGameIntegrationProfileTable
-	and CurrentGameIntegrationProfileTable.menuHeight or 524
+	and CurrentGameIntegrationProfileTable.menuHeight or 496
 CurrentGameIntegrationPlayerListRefreshIntervalNumber = CurrentGameIntegrationProfileTable
 	and CurrentGameIntegrationProfileTable.playerListRefreshInterval or 0.55
 CurrentGameIntegrationPlayerListEntryCacheDurationNumber = CurrentGameIntegrationProfileTable
@@ -184,6 +184,8 @@ local PlayerListRuntimeTable: { [string]: any } = {
 	entryStateCache = setmetatable({}, { __mode = "k" }),
 	refreshInterval = CurrentGameIntegrationPlayerListRefreshIntervalNumber,
 	lastRefreshTime = 0,
+	collapsed = false,
+	collapsedHeight = 36,
 }
 PlayerListEntryStateCacheDurationNumber = CurrentGameIntegrationPlayerListEntryCacheDurationNumber
 DebugModeEnabledBoolean = false
@@ -403,7 +405,7 @@ PlayerListBackgroundGradient.Parent = PlayerListRuntimeTable.frame
 
 PlayerListRuntimeTable.titleLabel = Instance.new("TextLabel")
 PlayerListRuntimeTable.titleLabel.Name = "PlayerListTitleLabel"
-PlayerListRuntimeTable.titleLabel.Size = UDim2.new(1, -12, 0, 24)
+PlayerListRuntimeTable.titleLabel.Size = UDim2.new(1, -42, 0, 24)
 PlayerListRuntimeTable.titleLabel.Position = UDim2.new(0, 6, 0, 4)
 PlayerListRuntimeTable.titleLabel.BackgroundTransparency = 1
 PlayerListRuntimeTable.titleLabel.Text = "Players"
@@ -413,6 +415,19 @@ PlayerListRuntimeTable.titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 PlayerListRuntimeTable.titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 PlayerListRuntimeTable.titleLabel.ZIndex = 101
 PlayerListRuntimeTable.titleLabel.Parent = PlayerListRuntimeTable.frame
+
+PlayerListRuntimeTable.toggleButton = Instance.new("TextButton")
+PlayerListRuntimeTable.toggleButton.Name = "PlayerListCollapseToggleButton"
+PlayerListRuntimeTable.toggleButton.Size = UDim2.new(0, 24, 0, 22)
+PlayerListRuntimeTable.toggleButton.Position = UDim2.new(1, -30, 0, 5)
+PlayerListRuntimeTable.toggleButton.BackgroundColor3 = Color3.fromRGB(45, 75, 105)
+PlayerListRuntimeTable.toggleButton.BorderSizePixel = 0
+PlayerListRuntimeTable.toggleButton.Text = "-"
+PlayerListRuntimeTable.toggleButton.Font = Enum.Font.SourceSansBold
+PlayerListRuntimeTable.toggleButton.TextSize = 18
+PlayerListRuntimeTable.toggleButton.TextColor3 = Color3.fromRGB(235, 245, 255)
+PlayerListRuntimeTable.toggleButton.ZIndex = 102
+PlayerListRuntimeTable.toggleButton.Parent = PlayerListRuntimeTable.frame
 
 PlayerListRuntimeTable.statusLabel = Instance.new("TextLabel")
 PlayerListRuntimeTable.statusLabel.Name = "PlayerListStatusLabel"
@@ -530,6 +545,7 @@ end
 
 ApplyAimbotUiDecoration(MenuFrame, 8, Color3.fromRGB(55, 105, 155))
 ApplyAimbotUiDecoration(PlayerListRuntimeTable.frame, 8, Color3.fromRGB(55, 105, 155))
+ApplyAimbotUiDecoration(PlayerListRuntimeTable.toggleButton, 5, Color3.fromRGB(75, 110, 145))
 ApplyAimbotUiDecoration(DebugFrame, 8, Color3.fromRGB(140, 110, 55))
 
 local function SafeDebugName(Value)
@@ -5907,7 +5923,7 @@ end
 CreateAimbotSectionSurface("AimSettingsSurfaceFrame", 44, 100)
 CreateAimbotSectionSurface("TargetingSurfaceFrame", 164, 106)
 CreateAimbotSectionSurface("VisibilitySurfaceFrame", 288, 60)
-CreateAimbotSectionSurface("BehaviorSurfaceFrame", 368, 202)
+CreateAimbotSectionSurface("BehaviorSurfaceFrame", 368, IsBloodZonePlaceBoolean and 202 or 126)
 
 CreateSectionHeader("Targeting", 150)
 CreateSectionHeader("Visibility", 274)
@@ -6573,9 +6589,14 @@ function UpdateResponsiveUiLayout()
 	local GapNumber = UiResponsiveRuntimeTable.gap
 	local MarginNumber = UiResponsiveRuntimeTable.margin
 	local IsNarrowBoolean = ViewportWidthNumber < UiResponsiveRuntimeTable.narrowBreakpoint
-	local PlayerListHeightNumber = IsNarrowBoolean
-		and UiResponsiveRuntimeTable.narrowPlayerListHeight
-		or MenuHeightNumber
+	local PlayerListHeightNumber
+	if PlayerListRuntimeTable.collapsed then
+		PlayerListHeightNumber = PlayerListRuntimeTable.collapsedHeight
+	elseif IsNarrowBoolean then
+		PlayerListHeightNumber = UiResponsiveRuntimeTable.narrowPlayerListHeight
+	else
+		PlayerListHeightNumber = MenuHeightNumber
+	end
 	local ScaleNumber
 
 	if IsNarrowBoolean then
@@ -6656,6 +6677,41 @@ function UpdateResponsiveUiLayout()
 	)
 end
 
+function UpdatePlayerListCollapseButtonAppearance()
+	local ToggleButton = PlayerListRuntimeTable.toggleButton
+	if not ToggleButton then
+		return
+	end
+
+	if PlayerListRuntimeTable.collapsed then
+		ToggleButton.Text = "+"
+		ToggleButton.BackgroundColor3 = Color3.fromRGB(55, 85, 115)
+	else
+		ToggleButton.Text = "-"
+		ToggleButton.BackgroundColor3 = Color3.fromRGB(45, 75, 105)
+	end
+	PlayerListRuntimeTable.statusLabel.Visible = not PlayerListRuntimeTable.collapsed
+	PlayerListRuntimeTable.scrollFrame.Visible = not PlayerListRuntimeTable.collapsed
+end
+
+function SetPlayerListCollapsed(CollapsedBoolean)
+	PlayerListRuntimeTable.collapsed = CollapsedBoolean == true
+	UpdatePlayerListCollapseButtonAppearance()
+	UpdateResponsiveUiLayout()
+end
+
+function TogglePlayerListCollapsed()
+	SetPlayerListCollapsed(not PlayerListRuntimeTable.collapsed)
+end
+
+PlayerListRuntimeTable.toggleButton.MouseButton1Click.Connect(PlayerListRuntimeTable.toggleButton.MouseButton1Click, function()
+	if IsAimbotUiInputSuppressed() then
+		return
+	end
+	TogglePlayerListCollapsed()
+end)
+
+UpdatePlayerListCollapseButtonAppearance()
 UpdateResponsiveUiLayout()
 if Camera and Camera.GetPropertyChangedSignal then
 	Camera.GetPropertyChangedSignal(Camera, "ViewportSize").Connect(Camera.GetPropertyChangedSignal(Camera, "ViewportSize"), function()
