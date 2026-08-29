@@ -99,6 +99,7 @@ ShowFovCircleBoolean = true
 ShowTargetLineBoolean = true
 EspEnabledBoolean = true
 EspSkeletonEnabledBoolean = true
+EspHighlightEnabledBoolean = true
 
 UseHookMethodBoolean = true
 UseCameraMethodBoolean = true
@@ -146,7 +147,7 @@ local GameIntegrationProfilesByPlaceIdTable = {
 		autoFireCooldown = 0,
 		playerListRefreshInterval = 0.12,
 		playerListEntryStateCacheDuration = 0.05,
-		menuHeight = 672,
+		menuHeight = 696,
 	},
 	[14939963714] = {
 		id = "jailbird",
@@ -163,7 +164,7 @@ UseCustomScopeCheckBoolean = CurrentGameIntegrationProfileTable ~= nil
 UseProjectilePredictionBoolean = CurrentGameIntegrationProfileTable ~= nil
 	and CurrentGameIntegrationProfileTable.usesProjectilePrediction == true
 CurrentGameIntegrationMenuHeightNumber = CurrentGameIntegrationProfileTable
-	and CurrentGameIntegrationProfileTable.menuHeight or 594
+	and CurrentGameIntegrationProfileTable.menuHeight or 618
 CurrentGameIntegrationPlayerListRefreshIntervalNumber = CurrentGameIntegrationProfileTable
 	and CurrentGameIntegrationProfileTable.playerListRefreshInterval or 0.55
 CurrentGameIntegrationPlayerListEntryCacheDurationNumber = CurrentGameIntegrationProfileTable
@@ -208,6 +209,10 @@ EspRuntimeTable = {
 	targetColor = Color3.fromRGB(255, 220, 90),
 	infoColor = Color3.fromRGB(240, 240, 240),
 	skeletonThickness = 1.2,
+	highlightFillTransparency = 0.84,
+	highlightOutlineTransparency = 0.08,
+	highlightTargetFillTransparency = 0.72,
+	highlightTargetOutlineTransparency = 0.02,
 	maxSkeletonLineCount = 14,
 	offscreenCullMargin = 140,
 	targetUpdateInterval = 0,
@@ -6046,6 +6051,19 @@ EspSkeletonToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 EspSkeletonToggleButton.ZIndex = 101
 EspSkeletonToggleButton.Parent = MenuFrame
 
+EspHighlightToggleButton = Instance.new("TextButton")
+EspHighlightToggleButton.Name = "EspHighlightToggleButton"
+EspHighlightToggleButton.Size = UDim2.new(1, -20, 0, 20)
+EspHighlightToggleButton.Position = UDim2.new(0, 10, 0, IsBloodZonePlaceBoolean and 654 or 578)
+EspHighlightToggleButton.BackgroundColor3 = Color3.fromRGB(60, 90, 115)
+EspHighlightToggleButton.BorderSizePixel = 0
+EspHighlightToggleButton.Text = "Highlight ESP: ON"
+EspHighlightToggleButton.Font = Enum.Font.SourceSans
+EspHighlightToggleButton.TextSize = 16
+EspHighlightToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+EspHighlightToggleButton.ZIndex = 101
+EspHighlightToggleButton.Parent = MenuFrame
+
 ApplyAimbotUiDecoration(SmoothSliderBackFrame, 4, Color3.fromRGB(55, 105, 155))
 ApplyAimbotUiDecoration(SmoothSliderKnobFrame, 4, Color3.fromRGB(170, 205, 235))
 ApplyAimbotUiDecoration(FovSliderBackFrame, 4, Color3.fromRGB(55, 135, 105))
@@ -6063,6 +6081,7 @@ ApplyAimbotUiDecoration(HookMethodToggleButton, 5, Color3.fromRGB(120, 80, 160))
 ApplyAimbotUiDecoration(StickyAimToggleButton, 5, Color3.fromRGB(95, 105, 120))
 ApplyAimbotUiDecoration(EspToggleButton, 5, Color3.fromRGB(70, 130, 90))
 ApplyAimbotUiDecoration(EspSkeletonToggleButton, 5, Color3.fromRGB(65, 110, 85))
+ApplyAimbotUiDecoration(EspHighlightToggleButton, 5, Color3.fromRGB(85, 120, 150))
 if SillyModeToggleButton then
 	ApplyAimbotUiDecoration(SillyModeToggleButton, 5, Color3.fromRGB(135, 70, 145))
 end
@@ -6077,7 +6096,7 @@ CreateAimbotSectionSurface("AimSettingsSurfaceFrame", 44, 100)
 CreateAimbotSectionSurface("TargetingSurfaceFrame", 164, 106)
 CreateAimbotSectionSurface("VisibilitySurfaceFrame", 288, 60)
 CreateAimbotSectionSurface("BehaviorSurfaceFrame", 368, IsBloodZonePlaceBoolean and 202 or 126)
-CreateAimbotSectionSurface("EspSurfaceFrame", IsBloodZonePlaceBoolean and 594 or 518, 60)
+CreateAimbotSectionSurface("EspSurfaceFrame", IsBloodZonePlaceBoolean and 594 or 518, 84)
 
 CreateSectionHeader("Targeting", 150)
 CreateSectionHeader("Visibility", 274)
@@ -6328,6 +6347,19 @@ function UpdateEspSkeletonToggleButtonAppearance()
 	end
 end
 
+function UpdateEspHighlightToggleButtonAppearance()
+	if not EspEnabledBoolean then
+		EspHighlightToggleButton.BackgroundColor3 = Color3.fromRGB(52, 58, 62)
+		EspHighlightToggleButton.Text = "Highlight ESP: LOCKED"
+	elseif EspHighlightEnabledBoolean then
+		EspHighlightToggleButton.BackgroundColor3 = Color3.fromRGB(55, 125, 165)
+		EspHighlightToggleButton.Text = "Highlight ESP: ON"
+	else
+		EspHighlightToggleButton.BackgroundColor3 = Color3.fromRGB(60, 72, 82)
+		EspHighlightToggleButton.Text = "Highlight ESP: OFF"
+	end
+end
+
 local function RefreshBloodZoneBehaviorButtons()
 	UpdateHeadshotButtonAppearance()
 	UpdateAutoFireButtonAppearance()
@@ -6517,6 +6549,7 @@ EspToggleButton.MouseButton1Click.Connect(EspToggleButton.MouseButton1Click, fun
 	EspEnabledBoolean = not EspEnabledBoolean
 	UpdateEspToggleButtonAppearance()
 	UpdateEspSkeletonToggleButtonAppearance()
+	UpdateEspHighlightToggleButtonAppearance()
 	if not EspEnabledBoolean then
 		EspRuntimeTable.HideAll(EspRuntimeTable)
 	end
@@ -6537,6 +6570,21 @@ EspSkeletonToggleButton.MouseButton1Click.Connect(EspSkeletonToggleButton.MouseB
 	end
 end)
 
+EspHighlightToggleButton.MouseButton1Click.Connect(EspHighlightToggleButton.MouseButton1Click, function()
+	if IsAimbotUiInputSuppressed() then
+		return
+	end
+	if not EspEnabledBoolean then
+		UpdateEspHighlightToggleButtonAppearance()
+		return
+	end
+	EspHighlightEnabledBoolean = not EspHighlightEnabledBoolean
+	UpdateEspHighlightToggleButtonAppearance()
+	if not EspHighlightEnabledBoolean then
+		EspRuntimeTable.ClearHighlights(EspRuntimeTable)
+	end
+end)
+
 UpdateHeadshotButtonAppearance()
 UpdateAutoFireButtonAppearance()
 UpdateVisibleCheckButtonAppearance()
@@ -6552,6 +6600,7 @@ UpdateShieldModeButtonAppearance()
 UpdateSillySkyVisibilityButtonAppearance()
 UpdateEspToggleButtonAppearance()
 UpdateEspSkeletonToggleButtonAppearance()
+UpdateEspHighlightToggleButtonAppearance()
 PlayerListRuntimeTable.RefreshUi(true)
 
 local function MakeFrameDraggable(FrameInstance, DragHandleInstance)
@@ -7609,6 +7658,21 @@ EspRuntimeTable.CreateSquare = function(self, FilledBoolean)
 	return Square
 end
 
+EspRuntimeTable.CreateHighlight = function(self, CharacterModel)
+	if not CharacterModel or not CharacterModel.Parent then
+		return nil
+	end
+	local HighlightObject = Instance.new("Highlight")
+	HighlightObject.Name = "TrueAimHighlight"
+	HighlightObject.Adornee = CharacterModel
+	HighlightObject.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	HighlightObject.FillTransparency = self.highlightFillTransparency or 0.84
+	HighlightObject.OutlineTransparency = self.highlightOutlineTransparency or 0.08
+	HighlightObject.Enabled = false
+	HighlightObject.Parent = CharacterModel
+	return HighlightObject
+end
+
 EspRuntimeTable.RemoveDrawingObject = function(self, DrawingObject)
 	if not DrawingObject then
 		return
@@ -7663,6 +7727,35 @@ EspRuntimeTable.GetAccentColor = function(self, PlayerObject, CharacterModel)
 	return self.defaultColor
 end
 
+EspRuntimeTable.UpdateHighlight = function(self, DrawingSet, CharacterModel, AccentColor3)
+	local HighlightObject = DrawingSet and DrawingSet.highlight or nil
+	if not EspHighlightEnabledBoolean then
+		if HighlightObject then
+			HighlightObject.Enabled = false
+		end
+		return
+	end
+	if (not HighlightObject or not HighlightObject.Parent) and CharacterModel and CharacterModel.Parent then
+		HighlightObject = self:CreateHighlight(CharacterModel)
+		DrawingSet.highlight = HighlightObject
+	end
+	if not HighlightObject then
+		return
+	end
+	local IsCurrentTargetBoolean = CharacterModel and CharacterModel == CurrentTargetCharacterModel
+	HighlightObject.Adornee = CharacterModel
+	HighlightObject.FillColor = AccentColor3
+	HighlightObject.OutlineColor = AccentColor3:Lerp(Color3.fromRGB(255, 255, 255), 0.35)
+	HighlightObject.FillTransparency = IsCurrentTargetBoolean
+		and (self.highlightTargetFillTransparency or 0.72)
+		or (self.highlightFillTransparency or 0.84)
+	HighlightObject.OutlineTransparency = IsCurrentTargetBoolean
+		and (self.highlightTargetOutlineTransparency or 0.02)
+		or (self.highlightOutlineTransparency or 0.08)
+	HighlightObject.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	HighlightObject.Enabled = true
+end
+
 EspRuntimeTable.GetHealthColor = function(self, HealthRatioNumber)
 	local RatioNumber = math.clamp(tonumber(HealthRatioNumber) or 0, 0, 1)
 	return Color3.fromRGB(
@@ -7698,6 +7791,7 @@ EspRuntimeTable.GetOrCreateDrawings = function(self, CharacterModel)
 		return DrawingSet
 	end
 	DrawingSet = {
+		highlight = nil,
 		skeletonLines = {},
 		nameText = self:CreateText(13),
 		infoText = self:CreateText(12),
@@ -7753,11 +7847,23 @@ EspRuntimeTable.HideDrawingSet = function(self, DrawingSet)
 	if DrawingSet.healthBarFill then
 		DrawingSet.healthBarFill.Visible = false
 	end
+	if DrawingSet.highlight then
+		DrawingSet.highlight.Enabled = false
+	end
 end
 
 EspRuntimeTable.HideAll = function(self)
 	for _, DrawingSet in pairs(self.drawingsByCharacter) do
 		self:HideDrawingSet(DrawingSet)
+	end
+end
+
+EspRuntimeTable.ClearHighlights = function(self)
+	for _, DrawingSet in pairs(self.drawingsByCharacter) do
+		if DrawingSet.highlight then
+			self:RemoveDrawingObject(DrawingSet.highlight)
+			DrawingSet.highlight = nil
+		end
 	end
 end
 
@@ -7781,6 +7887,7 @@ EspRuntimeTable.RemoveCharacterDrawings = function(self, CharacterModel)
 	self:RemoveDrawingObject(DrawingSet.infoText)
 	self:RemoveDrawingObject(DrawingSet.healthBarOutline)
 	self:RemoveDrawingObject(DrawingSet.healthBarFill)
+	self:RemoveDrawingObject(DrawingSet.highlight)
 	self.drawingsByCharacter[CharacterModel] = nil
 end
 
@@ -8027,6 +8134,7 @@ EspRuntimeTable.UpdateCharacter = function(self, CharacterModel, PlayerObject)
 	end
 
 	local AccentColor3 = self:GetAccentColor(PlayerObject, CharacterModel)
+	self:UpdateHighlight(DrawingSet, CharacterModel, AccentColor3)
 	self:UpdateSkeleton(DrawingSet, ProfileTable, ProjectedPointsTable, VisibleFlagsTable, AccentColor3)
 	self:UpdateOverlay(DrawingSet, CharacterModel, PlayerObject, ProjectedPointsTable, VisibleFlagsTable, MinXNumber, MinYNumber, MaxXNumber, MaxYNumber, DistanceNumber, AccentColor3)
 	DrawingSet.lastVisible = true
