@@ -200,7 +200,7 @@ EspRuntimeTable = {
 	entryCacheTable = {},
 	entryCacheKey = nil,
 	entryCacheTime = 0,
-	entryCacheDuration = 0.12,
+	entryCacheDuration = 0.18,
 	rigCacheDuration = 0.35,
 	defaultColor = Color3.fromRGB(120, 245, 150),
 	priorityColor = Color3.fromRGB(255, 175, 90),
@@ -210,6 +210,13 @@ EspRuntimeTable = {
 	skeletonThickness = 1.2,
 	maxSkeletonLineCount = 14,
 	offscreenCullMargin = 140,
+	targetUpdateInterval = 0,
+	priorityUpdateInterval = 0.025,
+	nearUpdateInterval = 0.035,
+	mediumUpdateInterval = 0.06,
+	farUpdateInterval = 0.1,
+	nearDistance = 110,
+	mediumDistance = 240,
 	rigProfiles = {
 		R15 = {
 			pointDefinitions = {
@@ -7715,6 +7722,8 @@ EspRuntimeTable.GetOrCreateDrawings = function(self, CharacterModel)
 		projectedPoints = {},
 		projectedVisibleFlags = {},
 		rigCache = nil,
+		lastUpdateTime = 0,
+		lastVisible = false,
 		lastSeenFrame = 0,
 	}
 	for LineIndex = 1, self.maxSkeletonLineCount do
@@ -7724,10 +7733,27 @@ EspRuntimeTable.GetOrCreateDrawings = function(self, CharacterModel)
 	return DrawingSet
 end
 
+EspRuntimeTable.GetCharacterUpdateInterval = function(self, CharacterModel, PlayerObject, DistanceNumber)
+	if CharacterModel and CharacterModel == CurrentTargetCharacterModel then
+		return self.targetUpdateInterval or 0
+	end
+	if PlayerObject and PlayerListRuntimeTable.IsPriorityPlayer(PlayerObject) then
+		return self.priorityUpdateInterval or 0.025
+	end
+	if DistanceNumber <= (self.nearDistance or 110) then
+		return self.nearUpdateInterval or 0.035
+	end
+	if DistanceNumber <= (self.mediumDistance or 240) then
+		return self.mediumUpdateInterval or 0.06
+	end
+	return self.farUpdateInterval or 0.1
+end
+
 EspRuntimeTable.HideDrawingSet = function(self, DrawingSet)
 	if not DrawingSet then
 		return
 	end
+	DrawingSet.lastVisible = false
 	for _, Line in ipairs(DrawingSet.skeletonLines or {}) do
 		Line.Visible = false
 	end
@@ -7964,11 +7990,13 @@ end
 
 EspRuntimeTable.UpdateCharacter = function(self, CharacterModel, PlayerObject)
 	local DrawingSet = self:GetOrCreateDrawings(CharacterModel)
+	local NowNumber = tick()
 	local AnchorPartInstance = GetCharacterRootPart(CharacterModel)
 		or GetCharacterTorsoLikePart(CharacterModel)
 		or GetCharacterHeadPart(CharacterModel)
 	if not AnchorPartInstance or not AnchorPartInstance.Parent then
 		self:HideDrawingSet(DrawingSet)
+		DrawingSet.lastUpdateTime = NowNumber
 		return false
 	end
 
@@ -7976,11 +8004,21 @@ EspRuntimeTable.UpdateCharacter = function(self, CharacterModel, PlayerObject)
 	local DistanceNumber = (AnchorPartInstance.Position - DistanceOriginVector3).Magnitude
 	if DistanceNumber > MaxDistanceNumber then
 		self:HideDrawingSet(DrawingSet)
+		DrawingSet.lastUpdateTime = NowNumber
+		return false
+	end
+	local UpdateIntervalNumber = self:GetCharacterUpdateInterval(CharacterModel, PlayerObject, DistanceNumber)
+	if UpdateIntervalNumber > 0 and (NowNumber - (DrawingSet.lastUpdateTime or 0)) < UpdateIntervalNumber then
+		if DrawingSet.lastVisible then
+			DrawingSet.lastSeenFrame = CurrentFrameSequenceNumber
+			return true
+		end
 		return false
 	end
 	local AnchorScreenPointVector3, AnchorOnScreenBoolean = Camera.WorldToViewportPoint(Camera, AnchorPartInstance.Position)
 	if AnchorScreenPointVector3.Z <= 0 then
 		self:HideDrawingSet(DrawingSet)
+		DrawingSet.lastUpdateTime = NowNumber
 		return false
 	end
 	if not AnchorOnScreenBoolean then
@@ -7991,6 +8029,7 @@ EspRuntimeTable.UpdateCharacter = function(self, CharacterModel, PlayerObject)
 			or AnchorScreenPointVector3.Y < -CullMarginNumber
 			or AnchorScreenPointVector3.Y > (ViewportSizeVector2.Y + CullMarginNumber) then
 			self:HideDrawingSet(DrawingSet)
+			DrawingSet.lastUpdateTime = NowNumber
 			return false
 		end
 	end
@@ -7999,12 +8038,15 @@ EspRuntimeTable.UpdateCharacter = function(self, CharacterModel, PlayerObject)
 	local ProjectedPointsTable, VisibleFlagsTable, AnyOnScreenBoolean, MinXNumber, MinYNumber, MaxXNumber, MaxYNumber = self:ProjectRigPoints(DrawingSet, ProfileTable, PartsTable)
 	if not AnyOnScreenBoolean or MinXNumber == math.huge or MinYNumber == math.huge then
 		self:HideDrawingSet(DrawingSet)
+		DrawingSet.lastUpdateTime = NowNumber
 		return false
 	end
 
 	local AccentColor3 = self:GetAccentColor(PlayerObject, CharacterModel)
 	self:UpdateSkeleton(DrawingSet, ProfileTable, ProjectedPointsTable, VisibleFlagsTable, AccentColor3)
 	self:UpdateOverlay(DrawingSet, CharacterModel, PlayerObject, ProjectedPointsTable, VisibleFlagsTable, MinXNumber, MinYNumber, MaxXNumber, MaxYNumber, DistanceNumber, AccentColor3)
+	DrawingSet.lastVisible = true
+	DrawingSet.lastUpdateTime = NowNumber
 	DrawingSet.lastSeenFrame = CurrentFrameSequenceNumber
 	return true
 end
