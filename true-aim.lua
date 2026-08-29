@@ -98,6 +98,8 @@ SkyAimVisibilitySampleYawOffsetDegreesTable = { 0, 30, -30, 60, -60, 90, -90, 18
 
 ShowFovCircleBoolean = true
 ShowTargetLineBoolean = true
+EspEnabledBoolean = true
+EspSkeletonEnabledBoolean = true
 
 UseHookMethodBoolean = true
 UseCameraMethodBoolean = true
@@ -132,12 +134,6 @@ FrameCharacterAliveCacheTable = {}
 FrameCharacterVelocityCacheTable = {}
 ObservedCharacterVelocitySampleByModelTable = setmetatable({}, { __mode = "k" })
 JailbirdVisibilityRuntimeTable = {
-	classificationByPart = setmetatable({}, { __mode = "k" }),
-	blockingParts = {},
-	blockingLookup = setmetatable({}, { __mode = "k" }),
-	trackingInitialized = false,
-	needsCompaction = false,
-	blockerNameFragments = { "barricade", "shield", "door frame" },
 	passThroughNameFragments = { "window", "glass" },
 }
 
@@ -151,7 +147,7 @@ local GameIntegrationProfilesByPlaceIdTable = {
 		autoFireCooldown = 0,
 		playerListRefreshInterval = 0.12,
 		playerListEntryStateCacheDuration = 0.05,
-		menuHeight = 572,
+		menuHeight = 672,
 	},
 	[14939963714] = {
 		id = "jailbird",
@@ -168,7 +164,7 @@ UseCustomScopeCheckBoolean = CurrentGameIntegrationProfileTable ~= nil
 UseProjectilePredictionBoolean = CurrentGameIntegrationProfileTable ~= nil
 	and CurrentGameIntegrationProfileTable.usesProjectilePrediction == true
 CurrentGameIntegrationMenuHeightNumber = CurrentGameIntegrationProfileTable
-	and CurrentGameIntegrationProfileTable.menuHeight or 496
+	and CurrentGameIntegrationProfileTable.menuHeight or 594
 CurrentGameIntegrationPlayerListRefreshIntervalNumber = CurrentGameIntegrationProfileTable
 	and CurrentGameIntegrationProfileTable.playerListRefreshInterval or 0.55
 CurrentGameIntegrationPlayerListEntryCacheDurationNumber = CurrentGameIntegrationProfileTable
@@ -199,6 +195,36 @@ local PlayerListRuntimeTable: { [string]: any } = {
 	lastRefreshTime = 0,
 	collapsed = false,
 	collapsedHeight = 36,
+}
+local EspRuntimeTable: { [string]: any } = {
+	drawingsByCharacter = setmetatable({}, { __mode = "k" }),
+	entryCacheTable = {},
+	entryCacheKey = nil,
+	entryCacheTime = 0,
+	entryCacheDuration = 0.12,
+	defaultColor = Color3.fromRGB(120, 245, 150),
+	priorityColor = Color3.fromRGB(255, 175, 90),
+	whitelistColor = Color3.fromRGB(95, 215, 255),
+	targetColor = Color3.fromRGB(255, 220, 90),
+	infoColor = Color3.fromRGB(240, 240, 240),
+	boxThickness = 1.5,
+	skeletonThickness = 1,
+	skeletonConnections = {
+		{ { "Head" }, { "UpperTorso", "Torso", "Center", "HitboxPart" } },
+		{ { "UpperTorso", "Torso", "Center", "HitboxPart" }, { "LowerTorso", "HumanoidRootPart", "Torso", "Center" } },
+		{ { "UpperTorso", "Torso", "Center", "HitboxPart" }, { "LeftUpperArm", "Left Arm" } },
+		{ { "LeftUpperArm", "Left Arm" }, { "LeftLowerArm" } },
+		{ { "LeftLowerArm", "Left Arm" }, { "LeftHand" } },
+		{ { "UpperTorso", "Torso", "Center", "HitboxPart" }, { "RightUpperArm", "Right Arm" } },
+		{ { "RightUpperArm", "Right Arm" }, { "RightLowerArm" } },
+		{ { "RightLowerArm", "Right Arm" }, { "RightHand" } },
+		{ { "LowerTorso", "HumanoidRootPart", "Torso", "Center" }, { "LeftUpperLeg", "Left Leg" } },
+		{ { "LeftUpperLeg", "Left Leg" }, { "LeftLowerLeg" } },
+		{ { "LeftLowerLeg", "Left Leg" }, { "LeftFoot" } },
+		{ { "LowerTorso", "HumanoidRootPart", "Torso", "Center" }, { "RightUpperLeg", "Right Leg" } },
+		{ { "RightUpperLeg", "Right Leg" }, { "RightLowerLeg" } },
+		{ { "RightLowerLeg", "Right Leg" }, { "RightFoot" } },
+	},
 }
 PlayerListEntryStateCacheDurationNumber = CurrentGameIntegrationPlayerListEntryCacheDurationNumber
 DebugModeEnabledBoolean = false
@@ -1397,6 +1423,9 @@ local function InvalidateSearchableCharacterEntriesCache()
 	CachedSearchableCharacterEntriesTable = {}
 	CachedSearchableCharacterEntriesKeyString = nil
 	CachedSearchableCharacterEntriesTimeNumber = 0
+	EspRuntimeTable.entryCacheTable = {}
+	EspRuntimeTable.entryCacheKey = nil
+	EspRuntimeTable.entryCacheTime = 0
 end
 
 function PlayerListRuntimeTable.IsPlayerWhitelisted(PlayerObject)
@@ -5908,6 +5937,32 @@ if IsBloodZonePlaceBoolean then
 	SillySkyVisibilityToggleButton.Parent = MenuFrame
 end
 
+local EspToggleButton = Instance.new("TextButton")
+EspToggleButton.Name = "EspToggleButton"
+EspToggleButton.Size = UDim2.new(1, -20, 0, 20)
+EspToggleButton.Position = UDim2.new(0, 10, 0, IsBloodZonePlaceBoolean and 606 or 530)
+EspToggleButton.BackgroundColor3 = Color3.fromRGB(45, 105, 65)
+EspToggleButton.BorderSizePixel = 0
+EspToggleButton.Text = "ESP: ON"
+EspToggleButton.Font = Enum.Font.SourceSans
+EspToggleButton.TextSize = 16
+EspToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+EspToggleButton.ZIndex = 101
+EspToggleButton.Parent = MenuFrame
+
+local EspSkeletonToggleButton = Instance.new("TextButton")
+EspSkeletonToggleButton.Name = "EspSkeletonToggleButton"
+EspSkeletonToggleButton.Size = UDim2.new(1, -20, 0, 20)
+EspSkeletonToggleButton.Position = UDim2.new(0, 10, 0, IsBloodZonePlaceBoolean and 630 or 554)
+EspSkeletonToggleButton.BackgroundColor3 = Color3.fromRGB(40, 85, 60)
+EspSkeletonToggleButton.BorderSizePixel = 0
+EspSkeletonToggleButton.Text = "Skeleton ESP: ON"
+EspSkeletonToggleButton.Font = Enum.Font.SourceSans
+EspSkeletonToggleButton.TextSize = 16
+EspSkeletonToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+EspSkeletonToggleButton.ZIndex = 101
+EspSkeletonToggleButton.Parent = MenuFrame
+
 ApplyAimbotUiDecoration(SmoothSliderBackFrame, 4, Color3.fromRGB(55, 105, 155))
 ApplyAimbotUiDecoration(SmoothSliderKnobFrame, 4, Color3.fromRGB(170, 205, 235))
 ApplyAimbotUiDecoration(FovSliderBackFrame, 4, Color3.fromRGB(55, 135, 105))
@@ -5923,6 +5978,8 @@ ApplyAimbotUiDecoration(TargetLineToggleButton, 5, Color3.fromRGB(90, 105, 120))
 ApplyAimbotUiDecoration(LockKeyToggleButton, 5, Color3.fromRGB(135, 125, 45))
 ApplyAimbotUiDecoration(HookMethodToggleButton, 5, Color3.fromRGB(120, 80, 160))
 ApplyAimbotUiDecoration(StickyAimToggleButton, 5, Color3.fromRGB(95, 105, 120))
+ApplyAimbotUiDecoration(EspToggleButton, 5, Color3.fromRGB(70, 130, 90))
+ApplyAimbotUiDecoration(EspSkeletonToggleButton, 5, Color3.fromRGB(65, 110, 85))
 if SillyModeToggleButton then
 	ApplyAimbotUiDecoration(SillyModeToggleButton, 5, Color3.fromRGB(135, 70, 145))
 end
@@ -5937,10 +5994,12 @@ CreateAimbotSectionSurface("AimSettingsSurfaceFrame", 44, 100)
 CreateAimbotSectionSurface("TargetingSurfaceFrame", 164, 106)
 CreateAimbotSectionSurface("VisibilitySurfaceFrame", 288, 60)
 CreateAimbotSectionSurface("BehaviorSurfaceFrame", 368, IsBloodZonePlaceBoolean and 202 or 126)
+CreateAimbotSectionSurface("EspSurfaceFrame", IsBloodZonePlaceBoolean and 594 or 518, 60)
 
 CreateSectionHeader("Targeting", 150)
 CreateSectionHeader("Visibility", 274)
 CreateSectionHeader("Behavior", 354)
+CreateSectionHeader("ESP", IsBloodZonePlaceBoolean and 580 or 504)
 
 local function UpdateHeadshotButtonAppearance()
 	if IsSillyModeBehaviorActive() then
@@ -6163,6 +6222,29 @@ local function UpdateSillySkyVisibilityButtonAppearance()
 	end
 end
 
+local function UpdateEspToggleButtonAppearance()
+	if EspEnabledBoolean then
+		EspToggleButton.BackgroundColor3 = Color3.fromRGB(0, 125, 75)
+		EspToggleButton.Text = "ESP: ON"
+	else
+		EspToggleButton.BackgroundColor3 = Color3.fromRGB(55, 65, 60)
+		EspToggleButton.Text = "ESP: OFF"
+	end
+end
+
+local function UpdateEspSkeletonToggleButtonAppearance()
+	if not EspEnabledBoolean then
+		EspSkeletonToggleButton.BackgroundColor3 = Color3.fromRGB(50, 58, 54)
+		EspSkeletonToggleButton.Text = "Skeleton ESP: LOCKED"
+	elseif EspSkeletonEnabledBoolean then
+		EspSkeletonToggleButton.BackgroundColor3 = Color3.fromRGB(0, 110, 80)
+		EspSkeletonToggleButton.Text = "Skeleton ESP: ON"
+	else
+		EspSkeletonToggleButton.BackgroundColor3 = Color3.fromRGB(55, 70, 60)
+		EspSkeletonToggleButton.Text = "Skeleton ESP: OFF"
+	end
+end
+
 local function RefreshBloodZoneBehaviorButtons()
 	UpdateHeadshotButtonAppearance()
 	UpdateAutoFireButtonAppearance()
@@ -6345,6 +6427,33 @@ if SillySkyVisibilityToggleButton then
 	end)
 end
 
+EspToggleButton.MouseButton1Click.Connect(EspToggleButton.MouseButton1Click, function()
+	if IsAimbotUiInputSuppressed() then
+		return
+	end
+	EspEnabledBoolean = not EspEnabledBoolean
+	UpdateEspToggleButtonAppearance()
+	UpdateEspSkeletonToggleButtonAppearance()
+	if not EspEnabledBoolean then
+		EspRuntimeTable.HideAll(EspRuntimeTable)
+	end
+end)
+
+EspSkeletonToggleButton.MouseButton1Click.Connect(EspSkeletonToggleButton.MouseButton1Click, function()
+	if IsAimbotUiInputSuppressed() then
+		return
+	end
+	if not EspEnabledBoolean then
+		UpdateEspSkeletonToggleButtonAppearance()
+		return
+	end
+	EspSkeletonEnabledBoolean = not EspSkeletonEnabledBoolean
+	UpdateEspSkeletonToggleButtonAppearance()
+	if not EspSkeletonEnabledBoolean then
+		EspRuntimeTable.HideSkeletons(EspRuntimeTable)
+	end
+end)
+
 UpdateHeadshotButtonAppearance()
 UpdateAutoFireButtonAppearance()
 UpdateVisibleCheckButtonAppearance()
@@ -6358,6 +6467,8 @@ UpdateHookHitChanceSliderAppearance()
 UpdateSillyModeButtonAppearance()
 UpdateShieldModeButtonAppearance()
 UpdateSillySkyVisibilityButtonAppearance()
+UpdateEspToggleButtonAppearance()
+UpdateEspSkeletonToggleButtonAppearance()
 PlayerListRuntimeTable.RefreshUi(true)
 
 local function MakeFrameDraggable(FrameInstance, DragHandleInstance)
@@ -6386,11 +6497,17 @@ UserInputService.InputChanged.Connect(UserInputService.InputChanged, function(In
 			UiInteractionRuntimeTable.startFramePosition.Y.Scale,
 			UiInteractionRuntimeTable.startFramePosition.Y.Offset + DeltaVector2.Y
 		)
+		if UiInteractionRuntimeTable.draggingFrame == MenuFrame then
+			StoreMenuOpenPosition(UiInteractionRuntimeTable.draggingFrame.Position, true)
+		end
 	end
 end)
 
 UserInputService.InputEnded.Connect(UserInputService.InputEnded, function(InputObject)
 	if InputObject.UserInputType == Enum.UserInputType.MouseButton1 then
+		if UiInteractionRuntimeTable.draggingFrame == MenuFrame then
+			StoreMenuOpenPosition(MenuFrame.Position, true)
+		end
 		UiInteractionRuntimeTable.draggingFrame = nil
 	end
 end)
@@ -6590,6 +6707,50 @@ local MenuIsOpenBoolean = true
 local MenuOpenPosition = MenuFrame.Position
 local MenuClosedPosition = UDim2.new(MenuOpenPosition.X.Scale, MenuOpenPosition.X.Offset, MenuOpenPosition.Y.Scale, MenuOpenPosition.Y.Offset - 150)
 local MenuTweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local MenuHasCustomPositionBoolean = false
+
+local function RoundAbsoluteUdim2Position(PositionUdim2)
+	if typeof(PositionUdim2) ~= "UDim2" then
+		return UDim2.new(0, 0, 0, 0)
+	end
+
+	return UDim2.new(
+		0,
+		math.floor(PositionUdim2.X.Offset + 0.5),
+		0,
+		math.floor(PositionUdim2.Y.Offset + 0.5)
+	)
+end
+
+local function BuildMenuClosedPositionFromOpenPosition(OpenPositionUdim2)
+	local RoundedOpenPosition = RoundAbsoluteUdim2Position(OpenPositionUdim2)
+	return UDim2.new(
+		0,
+		RoundedOpenPosition.X.Offset,
+		0,
+		math.floor(RoundedOpenPosition.Y.Offset - math.max(90, 150 * (UiResponsiveRuntimeTable.scale or 1)) + 0.5)
+	)
+end
+
+local function ClampMenuOpenPositionToViewport(OpenPositionUdim2, ViewportWidthNumber, ViewportHeightNumber, MenuWidthScaledNumber, MenuHeightScaledNumber, MarginNumber)
+	local RoundedOpenPosition = RoundAbsoluteUdim2Position(OpenPositionUdim2)
+	local MaximumXOffsetNumber = math.max(MarginNumber, ViewportWidthNumber - MenuWidthScaledNumber - MarginNumber)
+	local MaximumYOffsetNumber = math.max(MarginNumber, ViewportHeightNumber - MenuHeightScaledNumber - MarginNumber)
+	return UDim2.new(
+		0,
+		math.floor(math.clamp(RoundedOpenPosition.X.Offset, MarginNumber, MaximumXOffsetNumber) + 0.5),
+		0,
+		math.floor(math.clamp(RoundedOpenPosition.Y.Offset, MarginNumber, MaximumYOffsetNumber) + 0.5)
+	)
+end
+
+local function StoreMenuOpenPosition(OpenPositionUdim2, HasCustomPositionBoolean)
+	MenuOpenPosition = RoundAbsoluteUdim2Position(OpenPositionUdim2)
+	MenuClosedPosition = BuildMenuClosedPositionFromOpenPosition(MenuOpenPosition)
+	if HasCustomPositionBoolean ~= nil then
+		MenuHasCustomPositionBoolean = HasCustomPositionBoolean == true
+	end
+end
 
 function UpdateResponsiveUiLayout()
 	local CurrentCamera = WorkspaceService.CurrentCamera or Camera
@@ -6661,13 +6822,27 @@ function UpdateResponsiveUiLayout()
 	DebugScaleObject.Scale = ScaleNumber
 	MenuFrame.Size = UDim2.new(0, MenuWidthNumber, 0, MenuHeightNumber)
 	PlayerListRuntimeTable.frame.Size = UDim2.new(0, PlayerListWidthNumber, 0, PlayerListHeightNumber)
-	MenuOpenPosition = UDim2.new(0, math.floor(MenuXOffsetNumber + 0.5), 0, math.floor(MenuYOffsetNumber + 0.5))
-	MenuClosedPosition = UDim2.new(
+	local CenteredMenuOpenPosition = UDim2.new(
 		0,
 		math.floor(MenuXOffsetNumber + 0.5),
 		0,
-		math.floor(MenuYOffsetNumber - math.max(90, 150 * ScaleNumber) + 0.5)
+		math.floor(MenuYOffsetNumber + 0.5)
 	)
+	if MenuHasCustomPositionBoolean then
+		StoreMenuOpenPosition(
+			ClampMenuOpenPositionToViewport(
+				MenuOpenPosition,
+				ViewportWidthNumber,
+				ViewportHeightNumber,
+				MenuWidthScaledNumber,
+				MenuHeightScaledNumber,
+				MarginNumber
+			),
+			true
+		)
+	else
+		StoreMenuOpenPosition(CenteredMenuOpenPosition, false)
+	end
 	MenuFrame.Position = MenuIsOpenBoolean and MenuOpenPosition or MenuClosedPosition
 	PlayerListRuntimeTable.frame.Position = UDim2.new(
 		0,
@@ -6740,6 +6915,9 @@ MenuFrame.Visible = true
 local function SetMenuOpen(OpenBoolean)
 	if MenuIsOpenBoolean == OpenBoolean then
 		return
+	end
+	if not OpenBoolean then
+		StoreMenuOpenPosition(MenuFrame.Position, MenuHasCustomPositionBoolean)
 	end
 	MenuIsOpenBoolean = OpenBoolean
 	if OpenBoolean then
@@ -6935,109 +7113,53 @@ function JailbirdVisibilityRuntimeTable.IsCharacterRelatedPart(PartInstance)
 	return false
 end
 
-function JailbirdVisibilityRuntimeTable.GetPartClassification(PartInstance)
+local function SafeGetPartBooleanProperty(PartInstance, PropertyNameString, DefaultBoolean)
+	if not PartInstance or type(PropertyNameString) ~= "string" then
+		return DefaultBoolean == true
+	end
+
+	local SuccessBoolean, PropertyValue = pcall(function()
+		return PartInstance[PropertyNameString]
+	end)
+	if SuccessBoolean and type(PropertyValue) == "boolean" then
+		return PropertyValue
+	end
+
+	return DefaultBoolean == true
+end
+
+function JailbirdVisibilityRuntimeTable.IsPassThroughPart(PartInstance)
 	if not IsJailbirdPlaceBoolean
 		or not PartInstance
 		or not PartInstance.Parent
 		or not PartInstance.IsA
 		or not PartInstance.IsA(PartInstance, "BasePart") then
-		return nil
+		return false
 	end
 
-	local CachedClassificationValue = JailbirdVisibilityRuntimeTable.classificationByPart[PartInstance]
-	if CachedClassificationValue ~= nil then
-		return CachedClassificationValue ~= false and CachedClassificationValue or nil
+	if JailbirdVisibilityRuntimeTable.IsCharacterRelatedPart(PartInstance) then
+		return false
 	end
 
-	local ClassificationValue = nil
-	if not JailbirdVisibilityRuntimeTable.IsCharacterRelatedPart(PartInstance) then
-		if JailbirdVisibilityRuntimeTable.DoesInstanceHierarchyMatchFragments(
+	local IsWindowLikeBoolean = IsGlassVisibilityPart(PartInstance)
+	if not IsWindowLikeBoolean then
+		IsWindowLikeBoolean = JailbirdVisibilityRuntimeTable.DoesInstanceHierarchyMatchFragments(
 			PartInstance,
-			JailbirdVisibilityRuntimeTable.blockerNameFragments,
-			3
-		) then
-			ClassificationValue = "block"
-		else
-			local IsWindowLikeBoolean = JailbirdVisibilityRuntimeTable.DoesInstanceHierarchyMatchFragments(
-				PartInstance,
-				JailbirdVisibilityRuntimeTable.passThroughNameFragments,
-				2
-			)
-			if IsWindowLikeBoolean then
-				local TransparencyNumber = tonumber(PartInstance.Transparency) or 0
-				if PartInstance.Material == Enum.Material.Glass or TransparencyNumber >= 0.2 then
-					ClassificationValue = "ignore"
-				end
-			end
-		end
+			JailbirdVisibilityRuntimeTable.passThroughNameFragments,
+			2
+		)
+	end
+	if not IsWindowLikeBoolean then
+		return false
 	end
 
-	JailbirdVisibilityRuntimeTable.classificationByPart[PartInstance] = ClassificationValue or false
-	return ClassificationValue
-end
-
-function JailbirdVisibilityRuntimeTable.AddBlockingPart(PartInstance)
-	if JailbirdVisibilityRuntimeTable.GetPartClassification(PartInstance) ~= "block"
-		or JailbirdVisibilityRuntimeTable.blockingLookup[PartInstance] then
-		return
-	end
-
-	JailbirdVisibilityRuntimeTable.blockingLookup[PartInstance] = true
-	JailbirdVisibilityRuntimeTable.blockingParts[#JailbirdVisibilityRuntimeTable.blockingParts + 1] = PartInstance
-end
-
-function JailbirdVisibilityRuntimeTable.CompactBlockingParts()
-	if not JailbirdVisibilityRuntimeTable.needsCompaction then
-		return
-	end
-
-	local NextIndexNumber = 1
-	for _, PartInstance in ipairs(JailbirdVisibilityRuntimeTable.blockingParts) do
-		if PartInstance and PartInstance.Parent and JailbirdVisibilityRuntimeTable.blockingLookup[PartInstance] then
-			JailbirdVisibilityRuntimeTable.blockingParts[NextIndexNumber] = PartInstance
-			NextIndexNumber = NextIndexNumber + 1
-		end
-	end
-	for IndexNumber = NextIndexNumber, #JailbirdVisibilityRuntimeTable.blockingParts do
-		JailbirdVisibilityRuntimeTable.blockingParts[IndexNumber] = nil
-	end
-
-	JailbirdVisibilityRuntimeTable.needsCompaction = false
-end
-
-function JailbirdVisibilityRuntimeTable.EnsureTracking()
-	if not IsJailbirdPlaceBoolean or JailbirdVisibilityRuntimeTable.trackingInitialized then
-		return
-	end
-
-	JailbirdVisibilityRuntimeTable.trackingInitialized = true
-	for _, DescendantInstance in ipairs(WorkspaceService.GetDescendants(WorkspaceService)) do
-		if DescendantInstance.IsA and DescendantInstance.IsA(DescendantInstance, "BasePart") then
-			JailbirdVisibilityRuntimeTable.AddBlockingPart(DescendantInstance)
-		end
-	end
-
-	WorkspaceService.DescendantAdded.Connect(WorkspaceService.DescendantAdded, function(DescendantInstance)
-		if DescendantInstance and DescendantInstance.IsA and DescendantInstance.IsA(DescendantInstance, "BasePart") then
-			JailbirdVisibilityRuntimeTable.AddBlockingPart(DescendantInstance)
-		end
-	end)
-
-	WorkspaceService.DescendantRemoving.Connect(WorkspaceService.DescendantRemoving, function(DescendantInstance)
-		if not DescendantInstance then
-			return
-		end
-
-		JailbirdVisibilityRuntimeTable.classificationByPart[DescendantInstance] = nil
-		if JailbirdVisibilityRuntimeTable.blockingLookup[DescendantInstance] then
-			JailbirdVisibilityRuntimeTable.blockingLookup[DescendantInstance] = nil
-			JailbirdVisibilityRuntimeTable.needsCompaction = true
-		end
-	end)
-end
-
-function JailbirdVisibilityRuntimeTable.IsPassThroughPart(PartInstance)
-	return JailbirdVisibilityRuntimeTable.GetPartClassification(PartInstance) == "ignore"
+	local TransparencyNumber = tonumber(PartInstance.Transparency) or 0
+	local CanCollideBoolean = SafeGetPartBooleanProperty(PartInstance, "CanCollide", true)
+	local CanQueryBoolean = SafeGetPartBooleanProperty(PartInstance, "CanQuery", true)
+	return PartInstance.Material == Enum.Material.Glass
+		or TransparencyNumber >= 0.15
+		or not CanCollideBoolean
+		or not CanQueryBoolean
 end
 
 local function CloneRaycastParamsWithIgnoredInstances(BaseRaycastParamsObject, ExtraIgnoredInstancesTable)
@@ -7175,30 +7297,6 @@ local function IsTargetPointBlockedByMetalShield(TargetPositionVector3, Characte
 	return false
 end
 
-local function IsTargetPointBlockedByJailbirdCover(TargetPositionVector3, CharacterModel)
-	if not IsJailbirdPlaceBoolean or typeof(TargetPositionVector3) ~= "Vector3" then
-		return false
-	end
-
-	JailbirdVisibilityRuntimeTable.EnsureTracking()
-	JailbirdVisibilityRuntimeTable.CompactBlockingParts()
-
-	local VisibilityOriginVector3 = CurrentVisibilityOriginVector3 or Camera.CFrame.Position
-	local LocalCharacterModel = CurrentFrameLocalCharacterReadyBoolean and CurrentFrameLocalCharacterModel or ResolveCharacterModelForPlayer(LocalPlayer)
-	for _, BlockerPartInstance in ipairs(JailbirdVisibilityRuntimeTable.blockingParts) do
-		if BlockerPartInstance
-			and BlockerPartInstance.Parent
-			and BlockerPartInstance.Transparency < 0.95
-			and (not LocalCharacterModel or not BlockerPartInstance.IsDescendantOf(BlockerPartInstance, LocalCharacterModel))
-			and (not CharacterModel or not BlockerPartInstance.IsDescendantOf(BlockerPartInstance, CharacterModel))
-			and DoesSegmentIntersectPartBounds(VisibilityOriginVector3, TargetPositionVector3, BlockerPartInstance) then
-			return true
-		end
-	end
-
-	return false
-end
-
 RaycastBetweenIgnoringGlass = function(OriginVector3, TargetPositionVector3, ExtraIgnoredInstancesTable)
 	if not OriginVector3 or not TargetPositionVector3 then
 		return nil
@@ -7270,7 +7368,7 @@ local function IsVisible(TargetPositionVector3, CharacterModel, PartInstance)
 
 	local Result = RaycastToTargetIgnoringGlass(TargetPositionVector3)
 	if not Result then
-		return not IsTargetPointBlockedByJailbirdCover(TargetPositionVector3, CharacterModel)
+		return true
 	end
 
 	local HitTargetBoolean = false
@@ -7280,9 +7378,6 @@ local function IsVisible(TargetPositionVector3, CharacterModel, PartInstance)
 		HitTargetBoolean = Result.Instance.IsDescendantOf(Result.Instance, CharacterModel)
 	end
 	if HitTargetBoolean then
-		if IsTargetPointBlockedByJailbirdCover(TargetPositionVector3, CharacterModel) then
-			return false
-		end
 		return true
 	end
 
@@ -7411,6 +7506,405 @@ local function IsCharacterAlive(CharacterModel)
 	local AliveBoolean = ComputeCharacterAlive(CharacterModel)
 	FrameCharacterAliveCacheTable[CharacterModel] = AliveBoolean
 	return AliveBoolean
+end
+
+EspRuntimeTable.CreateLine = function(self, ThicknessNumber)
+	local Line = Drawing.new("Line")
+	Line.Thickness = ThicknessNumber or 1
+	Line.Transparency = 1
+	Line.Color = self.defaultColor
+	Line.Visible = false
+	return Line
+end
+
+EspRuntimeTable.CreateText = function(self, SizeNumber)
+	local TextDrawing = Drawing.new("Text")
+	TextDrawing.Size = SizeNumber or 13
+	TextDrawing.Transparency = 1
+	TextDrawing.Color = self.infoColor
+	TextDrawing.Visible = false
+	TextDrawing.Center = true
+	pcall(function()
+		TextDrawing.Outline = true
+	end)
+	return TextDrawing
+end
+
+EspRuntimeTable.CreateSquare = function(self, FilledBoolean)
+	local Square = Drawing.new("Square")
+	Square.Filled = FilledBoolean == true
+	Square.Thickness = 1
+	Square.Transparency = 1
+	Square.Visible = false
+	return Square
+end
+
+EspRuntimeTable.RemoveDrawingObject = function(self, DrawingObject)
+	if not DrawingObject then
+		return
+	end
+	pcall(function()
+		if DrawingObject.Remove then
+			DrawingObject.Remove(DrawingObject)
+		elseif DrawingObject.Destroy then
+			DrawingObject.Destroy(DrawingObject)
+		end
+	end)
+end
+
+EspRuntimeTable.ResolvePartFromNames = function(self, CharacterModel, PartNamesTable)
+	if not CharacterModel or type(PartNamesTable) ~= "table" then
+		return nil
+	end
+	for _, PartNameString in ipairs(PartNamesTable) do
+		local PartInstance = CharacterModel.FindFirstChild(CharacterModel, PartNameString)
+		if PartInstance and PartInstance.IsA(PartInstance, "BasePart") then
+			return PartInstance
+		end
+	end
+	return nil
+end
+
+EspRuntimeTable.GetAccentColor = function(self, PlayerObject, CharacterModel)
+	if CharacterModel and CurrentTargetCharacterModel == CharacterModel then
+		return self.targetColor
+	end
+	if PlayerObject and PlayerListRuntimeTable.IsPriorityPlayer(PlayerObject) then
+		return self.priorityColor
+	end
+	if PlayerObject and PlayerListRuntimeTable.IsPlayerWhitelisted(PlayerObject) then
+		return self.whitelistColor
+	end
+	return self.defaultColor
+end
+
+EspRuntimeTable.GetHealthColor = function(self, HealthRatioNumber)
+	local RatioNumber = math.clamp(tonumber(HealthRatioNumber) or 0, 0, 1)
+	return Color3.fromRGB(
+		math.floor(255 * (1 - RatioNumber) + 0.5),
+		math.floor(255 * RatioNumber + 0.5),
+		70
+	)
+end
+
+EspRuntimeTable.GetDisplayName = function(self, PlayerObject, CharacterModel)
+	if PlayerObject then
+		return PlayerListRuntimeTable.GetDisplayName(PlayerObject)
+	end
+	return GetCharacterIdentityString(CharacterModel) or "Unknown"
+end
+
+EspRuntimeTable.GetBoundingBox = function(self, CharacterModel)
+	if not CharacterModel or not CharacterModel.Parent then
+		return nil, nil
+	end
+	local SuccessBoolean, BoxCFrame, BoxSize = pcall(function()
+		return CharacterModel.GetBoundingBox(CharacterModel)
+	end)
+	if SuccessBoolean and typeof(BoxCFrame) == "CFrame" and typeof(BoxSize) == "Vector3" then
+		return BoxCFrame, BoxSize
+	end
+	local FallbackPartInstance = GetCharacterRootPart(CharacterModel)
+		or GetCharacterTorsoLikePart(CharacterModel)
+		or GetCharacterHeadPart(CharacterModel)
+		or GetPreferredTargetPart(CharacterModel)
+	if FallbackPartInstance then
+		return FallbackPartInstance.CFrame, FallbackPartInstance.Size
+	end
+	return nil, nil
+end
+
+EspRuntimeTable.GetHealthInfo = function(self, CharacterModel)
+	local Humanoid = GetCharacterHumanoid(CharacterModel)
+	if not Humanoid then
+		return 0, 100, 0
+	end
+	local HealthNumber = tonumber(Humanoid.Health) or 0
+	local MaxHealthNumber = tonumber(Humanoid.MaxHealth) or 0
+	if MaxHealthNumber <= 0 then
+		MaxHealthNumber = HealthNumber > 0 and HealthNumber or 100
+	end
+	return HealthNumber, MaxHealthNumber, math.clamp(HealthNumber / MaxHealthNumber, 0, 1)
+end
+
+EspRuntimeTable.GetOrCreateDrawings = function(self, CharacterModel)
+	local DrawingSet = self.drawingsByCharacter[CharacterModel]
+	if DrawingSet then
+		return DrawingSet
+	end
+	DrawingSet = {
+		boxLines = {},
+		skeletonLines = {},
+		nameText = self:CreateText(13),
+		infoText = self:CreateText(12),
+		healthBarOutline = self:CreateSquare(false),
+		healthBarFill = self:CreateSquare(true),
+		lastSeenFrame = 0,
+	}
+	for LineIndex = 1, #TargetCubeEdgePairsTable do
+		DrawingSet.boxLines[LineIndex] = self:CreateLine(self.boxThickness)
+	end
+	for LineIndex = 1, #self.skeletonConnections do
+		DrawingSet.skeletonLines[LineIndex] = self:CreateLine(self.skeletonThickness)
+	end
+	self.drawingsByCharacter[CharacterModel] = DrawingSet
+	return DrawingSet
+end
+
+EspRuntimeTable.HideDrawingSet = function(self, DrawingSet)
+	if not DrawingSet then
+		return
+	end
+	for _, Line in ipairs(DrawingSet.boxLines or {}) do
+		Line.Visible = false
+	end
+	for _, Line in ipairs(DrawingSet.skeletonLines or {}) do
+		Line.Visible = false
+	end
+	if DrawingSet.nameText then
+		DrawingSet.nameText.Visible = false
+	end
+	if DrawingSet.infoText then
+		DrawingSet.infoText.Visible = false
+	end
+	if DrawingSet.healthBarOutline then
+		DrawingSet.healthBarOutline.Visible = false
+	end
+	if DrawingSet.healthBarFill then
+		DrawingSet.healthBarFill.Visible = false
+	end
+end
+
+EspRuntimeTable.HideAll = function(self)
+	for _, DrawingSet in pairs(self.drawingsByCharacter) do
+		self:HideDrawingSet(DrawingSet)
+	end
+end
+
+EspRuntimeTable.HideSkeletons = function(self)
+	for _, DrawingSet in pairs(self.drawingsByCharacter) do
+		for _, Line in ipairs(DrawingSet.skeletonLines or {}) do
+			Line.Visible = false
+		end
+	end
+end
+
+EspRuntimeTable.RemoveCharacterDrawings = function(self, CharacterModel)
+	local DrawingSet = self.drawingsByCharacter[CharacterModel]
+	if not DrawingSet then
+		return
+	end
+	for _, DrawingObject in ipairs(DrawingSet.boxLines or {}) do
+		self:RemoveDrawingObject(DrawingObject)
+	end
+	for _, DrawingObject in ipairs(DrawingSet.skeletonLines or {}) do
+		self:RemoveDrawingObject(DrawingObject)
+	end
+	self:RemoveDrawingObject(DrawingSet.nameText)
+	self:RemoveDrawingObject(DrawingSet.infoText)
+	self:RemoveDrawingObject(DrawingSet.healthBarOutline)
+	self:RemoveDrawingObject(DrawingSet.healthBarFill)
+	self.drawingsByCharacter[CharacterModel] = nil
+end
+
+EspRuntimeTable.GetCharacterEntries = function(self, LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
+	local CacheKeyString = tostring(LocalCharacterModel) .. "|" .. tostring(TeamCheckEnabledBoolean) .. "|" .. tostring(LocalTeamObject)
+	local NowNumber = tick()
+	if self.entryCacheKey == CacheKeyString
+		and (NowNumber - self.entryCacheTime) < self.entryCacheDuration then
+		return self.entryCacheTable
+	end
+	local CharacterEntries = {}
+	local SeenCharacterModels = {}
+
+	local function AddCharacterEntry(PlayerObject, CharacterModel)
+		if not CharacterModel
+			or not CharacterModel.Parent
+			or not IsHumanoidCharacterModel(CharacterModel)
+			or not GetCharacterRootPart(CharacterModel)
+			or IsLocalControlledCharacterModel(CharacterModel, LocalCharacterModel)
+			or SeenCharacterModels[CharacterModel] then
+			return
+		end
+		if IsCustomCharacterGameBoolean and not PlayerObject then
+			return
+		end
+		if TeamCheckEnabledBoolean and PlayerObject and LocalTeamObject and PlayerObject.Team == LocalTeamObject then
+			return
+		end
+		SeenCharacterModels[CharacterModel] = true
+		CharacterEntries[#CharacterEntries + 1] = {
+			player = PlayerObject,
+			character = CharacterModel,
+		}
+	end
+
+	if IsCustomCharacterGameBoolean then
+		for _, CharacterModel in ipairs(GetCharacterModelsFromCharactersFolder()) do
+			AddCharacterEntry(FindPlayerForCharacterModel(CharacterModel), CharacterModel)
+		end
+	else
+		for _, PlayerObject in ipairs(Players.GetPlayers(Players)) do
+			if PlayerObject ~= LocalPlayer then
+				AddCharacterEntry(PlayerObject, ResolveCharacterModelForPlayer(PlayerObject))
+			end
+		end
+	end
+
+	self.entryCacheTable = CharacterEntries
+	self.entryCacheKey = CacheKeyString
+	self.entryCacheTime = NowNumber
+	return CharacterEntries
+end
+
+EspRuntimeTable.UpdateSkeleton = function(self, DrawingSet, CharacterModel, AccentColor3)
+	for ConnectionIndex, ConnectionTable in ipairs(self.skeletonConnections) do
+		local Line = DrawingSet.skeletonLines[ConnectionIndex]
+		if not EspSkeletonEnabledBoolean then
+			Line.Visible = false
+			continue
+		end
+		local StartPartInstance = self:ResolvePartFromNames(CharacterModel, ConnectionTable[1])
+		local EndPartInstance = self:ResolvePartFromNames(CharacterModel, ConnectionTable[2])
+		if not StartPartInstance or not EndPartInstance or StartPartInstance == EndPartInstance then
+			Line.Visible = false
+			continue
+		end
+		local StartScreenPoint, StartOnScreenBoolean = Camera:WorldToViewportPoint(StartPartInstance.Position)
+		local EndScreenPoint, EndOnScreenBoolean = Camera:WorldToViewportPoint(EndPartInstance.Position)
+		if StartOnScreenBoolean and EndOnScreenBoolean and StartScreenPoint.Z > 0 and EndScreenPoint.Z > 0 then
+			Line.From = Vector2.new(StartScreenPoint.X, StartScreenPoint.Y)
+			Line.To = Vector2.new(EndScreenPoint.X, EndScreenPoint.Y)
+			Line.Color = AccentColor3
+			Line.Visible = true
+		else
+			Line.Visible = false
+		end
+	end
+end
+
+EspRuntimeTable.UpdateCharacter = function(self, CharacterModel, PlayerObject)
+	local DrawingSet = self:GetOrCreateDrawings(CharacterModel)
+	local BoxCFrame, BoxSize = self:GetBoundingBox(CharacterModel)
+	if not BoxCFrame or not BoxSize then
+		self:HideDrawingSet(DrawingSet)
+		return false
+	end
+
+	local WorldCorners = GetCubeCorners(BoxCFrame, BoxSize)
+	local ScreenCorners = {}
+	local MinXNumber = math.huge
+	local MinYNumber = math.huge
+	local MaxXNumber = -math.huge
+	local MaxYNumber = -math.huge
+	local AnyOnScreenBoolean = false
+
+	for CornerIndex, CornerVector3 in ipairs(WorldCorners) do
+		local ScreenPoint, OnScreenBoolean = Camera:WorldToViewportPoint(CornerVector3)
+		if ScreenPoint.Z > 0 then
+			local ScreenCornerVector2 = Vector2.new(ScreenPoint.X, ScreenPoint.Y)
+			ScreenCorners[CornerIndex] = ScreenCornerVector2
+			MinXNumber = math.min(MinXNumber, ScreenCornerVector2.X)
+			MinYNumber = math.min(MinYNumber, ScreenCornerVector2.Y)
+			MaxXNumber = math.max(MaxXNumber, ScreenCornerVector2.X)
+			MaxYNumber = math.max(MaxYNumber, ScreenCornerVector2.Y)
+			if OnScreenBoolean then
+				AnyOnScreenBoolean = true
+			end
+		end
+	end
+
+	local AnchorPartInstance = GetCharacterHeadPart(CharacterModel)
+		or GetCharacterRootPart(CharacterModel)
+		or GetPreferredTargetPart(CharacterModel)
+	if not AnyOnScreenBoolean and AnchorPartInstance then
+		local AnchorScreenPoint, AnchorOnScreenBoolean = Camera:WorldToViewportPoint(AnchorPartInstance.Position)
+		AnyOnScreenBoolean = AnchorOnScreenBoolean and AnchorScreenPoint.Z > 0
+	end
+	if not AnyOnScreenBoolean or MinXNumber == math.huge or MinYNumber == math.huge then
+		self:HideDrawingSet(DrawingSet)
+		return false
+	end
+
+	local DistanceOriginVector3 = CurrentVisibilityOriginVector3 or Camera.CFrame.Position
+	local DistanceNumber = AnchorPartInstance and (AnchorPartInstance.Position - DistanceOriginVector3).Magnitude or 0
+	if DistanceNumber > MaxDistanceNumber then
+		self:HideDrawingSet(DrawingSet)
+		return false
+	end
+
+	local AccentColor3 = self:GetAccentColor(PlayerObject, CharacterModel)
+	for LineIndex, PairTable in ipairs(TargetCubeEdgePairsTable) do
+		local StartCornerVector2 = ScreenCorners[PairTable[1]]
+		local EndCornerVector2 = ScreenCorners[PairTable[2]]
+		local Line = DrawingSet.boxLines[LineIndex]
+		if StartCornerVector2 and EndCornerVector2 then
+			Line.From = StartCornerVector2
+			Line.To = EndCornerVector2
+			Line.Color = AccentColor3
+			Line.Visible = true
+		else
+			Line.Visible = false
+		end
+	end
+
+	local HealthNumber, MaxHealthNumber, HealthRatioNumber = self:GetHealthInfo(CharacterModel)
+	local HealthBarHeightNumber = math.max(4, math.floor(MaxYNumber - MinYNumber + 0.5))
+	local HealthBarXNumber = math.floor(MinXNumber - 7.5)
+	local HealthBarYNumber = math.floor(MinYNumber + 0.5)
+	local FilledHeightNumber = math.clamp(math.floor(HealthBarHeightNumber * HealthRatioNumber + 0.5), 0, HealthBarHeightNumber)
+
+	DrawingSet.healthBarOutline.Position = Vector2.new(HealthBarXNumber, HealthBarYNumber)
+	DrawingSet.healthBarOutline.Size = Vector2.new(4, HealthBarHeightNumber)
+	DrawingSet.healthBarOutline.Color = Color3.fromRGB(12, 12, 12)
+	DrawingSet.healthBarOutline.Visible = true
+
+	DrawingSet.healthBarFill.Position = Vector2.new(HealthBarXNumber + 1, HealthBarYNumber + (HealthBarHeightNumber - FilledHeightNumber) + 1)
+	DrawingSet.healthBarFill.Size = Vector2.new(2, math.max(0, FilledHeightNumber - 2))
+	DrawingSet.healthBarFill.Color = self:GetHealthColor(HealthRatioNumber)
+	DrawingSet.healthBarFill.Visible = FilledHeightNumber > 1
+
+	DrawingSet.nameText.Text = self:GetDisplayName(PlayerObject, CharacterModel)
+	DrawingSet.nameText.Position = Vector2.new(math.floor(((MinXNumber + MaxXNumber) * 0.5) + 0.5), math.floor(MinYNumber - 16 + 0.5))
+	DrawingSet.nameText.Color = AccentColor3
+	DrawingSet.nameText.Visible = true
+
+	DrawingSet.infoText.Text = tostring(math.floor(DistanceNumber + 0.5)) .. " studs | " .. tostring(math.floor(HealthNumber + 0.5)) .. "/" .. tostring(math.floor(MaxHealthNumber + 0.5)) .. " HP"
+	DrawingSet.infoText.Position = Vector2.new(math.floor(((MinXNumber + MaxXNumber) * 0.5) + 0.5), math.floor(MaxYNumber + 3 + 0.5))
+	DrawingSet.infoText.Color = self.infoColor
+	DrawingSet.infoText.Visible = true
+
+	self:UpdateSkeleton(DrawingSet, CharacterModel, AccentColor3)
+	DrawingSet.lastSeenFrame = CurrentFrameSequenceNumber
+	return true
+end
+
+EspRuntimeTable.Update = function(self, LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
+	if not EspEnabledBoolean or not Camera then
+		self:HideAll()
+		return
+	end
+
+	for CharacterModel in pairs(self.drawingsByCharacter) do
+		if not CharacterModel or not CharacterModel.Parent then
+			self:RemoveCharacterDrawings(CharacterModel)
+		end
+	end
+
+	local CharacterEntries = self:GetCharacterEntries(LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
+	for _, EntryTable in ipairs(CharacterEntries) do
+		if IsCharacterAlive(EntryTable.character) then
+			self:UpdateCharacter(EntryTable.character, EntryTable.player)
+		else
+			self:HideDrawingSet(self.drawingsByCharacter[EntryTable.character])
+		end
+	end
+
+	for _, DrawingSet in pairs(self.drawingsByCharacter) do
+		if DrawingSet.lastSeenFrame ~= CurrentFrameSequenceNumber then
+			self:HideDrawingSet(DrawingSet)
+		end
+	end
 end
 
 local function GetProjectileArcVisibleTargetData(PartInstance, CharacterModel)
@@ -7572,7 +8066,22 @@ function ShieldModeRuntimeTable.GetJailbirdVisiblePointForPart(PartInstance, Cha
 		return ProjectileArcVisibleTargetData
 	end
 
-	return ShieldModeRuntimeTable.ResolveVisibleSurfacePointForPart(PartInstance, CharacterModel, MouseLocationVector2, 2)
+	local VisibleTargetData = ShieldModeRuntimeTable.ResolveVisibleSurfacePointForPart(
+		PartInstance,
+		CharacterModel,
+		MouseLocationVector2,
+		math.max(VisibleCheckSubdivisionsNumber, 4)
+	)
+	if VisibleTargetData then
+		return VisibleTargetData
+	end
+
+	return ShieldModeRuntimeTable.ResolveVisibleSurfacePointForPart(
+		PartInstance,
+		CharacterModel,
+		MouseLocationVector2,
+		math.max(VisibleCheckSubdivisionsNumber + 2, 6)
+	)
 end
 
 local function GetVisiblePointForPart(PartInstance, CharacterModel, MouseLocationVector2)
@@ -8316,6 +8825,7 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 		FovCircle.Visible = false
 		TargetLine.Visible = false
 		SetTargetCubeVisible(false)
+		EspRuntimeTable:HideAll()
 		return
 	end
 
@@ -8647,6 +9157,8 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 			DebugLog("line-hidden", "Target line hidden because " .. HiddenReasonString .. " | current=" .. SafeDebugName(CurrentTargetPartInstance) .. " | mouse target=" .. SafeDebugName(MouseOverPartInstance), false)
 		end
 	end
+
+	EspRuntimeTable:Update(LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
 
 	if CurrentTargetPartInstance and IsCharacterAlive(CurrentTargetCharacterModel) then
 		local TargetPositionVector3 = GetCurrentEffectiveAimPointVector3()
