@@ -135,6 +135,7 @@ FrameCharacterVelocityCacheTable = {}
 ObservedCharacterVelocitySampleByModelTable = setmetatable({}, { __mode = "k" })
 JailbirdVisibilityRuntimeTable = {
 	passThroughNameFragments = { "window", "glass" },
+	passThroughByPart = setmetatable({}, { __mode = "k" }),
 }
 
 
@@ -203,6 +204,7 @@ EspRuntimeTable = {
 	entryCacheTime = 0,
 	entryCacheDuration = 0.18,
 	rigCacheDuration = 0.35,
+	highlightHost = nil,
 	defaultColor = Color3.fromRGB(120, 245, 150),
 	priorityColor = Color3.fromRGB(255, 175, 90),
 	whitelistColor = Color3.fromRGB(95, 215, 255),
@@ -7272,7 +7274,13 @@ function JailbirdVisibilityRuntimeTable.IsPassThroughPart(PartInstance)
 		return false
 	end
 
+	local CachedPassThroughBoolean = JailbirdVisibilityRuntimeTable.passThroughByPart[PartInstance]
+	if CachedPassThroughBoolean ~= nil then
+		return CachedPassThroughBoolean
+	end
+
 	if JailbirdVisibilityRuntimeTable.IsCharacterRelatedPart(PartInstance) then
+		JailbirdVisibilityRuntimeTable.passThroughByPart[PartInstance] = false
 		return false
 	end
 
@@ -7285,16 +7293,19 @@ function JailbirdVisibilityRuntimeTable.IsPassThroughPart(PartInstance)
 		)
 	end
 	if not IsWindowLikeBoolean then
+		JailbirdVisibilityRuntimeTable.passThroughByPart[PartInstance] = false
 		return false
 	end
 
 	local TransparencyNumber = tonumber(PartInstance.Transparency) or 0
 	local CanCollideBoolean = SafeGetPartBooleanProperty(PartInstance, "CanCollide", true)
 	local CanQueryBoolean = SafeGetPartBooleanProperty(PartInstance, "CanQuery", true)
-	return PartInstance.Material == Enum.Material.Glass
+	local IsPassThroughBoolean = PartInstance.Material == Enum.Material.Glass
 		or TransparencyNumber >= 0.15
 		or not CanCollideBoolean
 		or not CanQueryBoolean
+	JailbirdVisibilityRuntimeTable.passThroughByPart[PartInstance] = IsPassThroughBoolean
+	return IsPassThroughBoolean
 end
 
 function CloneRaycastParamsWithIgnoredInstances(BaseRaycastParamsObject, ExtraIgnoredInstancesTable)
@@ -7658,8 +7669,44 @@ EspRuntimeTable.CreateSquare = function(self, FilledBoolean)
 	return Square
 end
 
+EspRuntimeTable.GetHighlightHost = function(self)
+	local HighlightHost = self.highlightHost
+	if HighlightHost and HighlightHost.Parent then
+		return HighlightHost
+	end
+
+	HighlightHost = Instance.new("Folder")
+	HighlightHost.Name = "TrueAimHighlights"
+	pcall(function()
+		HighlightHost.Parent = WorkspaceService
+	end)
+	if not HighlightHost.Parent then
+		local PlayerGui = LocalPlayer and LocalPlayer.FindFirstChild(LocalPlayer, "PlayerGui") or nil
+		if PlayerGui then
+			pcall(function()
+				HighlightHost.Parent = PlayerGui
+			end)
+		end
+	end
+	if not HighlightHost.Parent and MenuGui then
+		pcall(function()
+			HighlightHost.Parent = MenuGui
+		end)
+	end
+	if not HighlightHost.Parent then
+		return nil
+	end
+
+	self.highlightHost = HighlightHost
+	return HighlightHost
+end
+
 EspRuntimeTable.CreateHighlight = function(self, CharacterModel)
 	if not CharacterModel or not CharacterModel.Parent then
+		return nil
+	end
+	local HighlightHost = self:GetHighlightHost()
+	if not HighlightHost then
 		return nil
 	end
 	local HighlightObject = Instance.new("Highlight")
@@ -7669,7 +7716,7 @@ EspRuntimeTable.CreateHighlight = function(self, CharacterModel)
 	HighlightObject.FillTransparency = self.highlightFillTransparency or 0.84
 	HighlightObject.OutlineTransparency = self.highlightOutlineTransparency or 0.08
 	HighlightObject.Enabled = false
-	HighlightObject.Parent = CharacterModel
+	HighlightObject.Parent = HighlightHost
 	return HighlightObject
 end
 
@@ -8256,7 +8303,7 @@ function GetSkyVisibleTargetData(PartInstance, CharacterModel)
 	}
 end
 
-function ShieldModeRuntimeTable.ResolveVisibleSurfacePointForPart(PartInstance, CharacterModel, MouseLocationVector2, SubdivisionNumber)
+function ShieldModeRuntimeTable.ResolveVisibleSurfacePointForPart(PartInstance, CharacterModel, MouseLocationVector2, SubdivisionNumber, UseNearFacesOnlyBoolean)
 	SubdivisionNumber = math.max(tonumber(SubdivisionNumber) or 1, 1)
 
 	local PartSize = PartInstance.Size
@@ -8290,55 +8337,68 @@ function ShieldModeRuntimeTable.ResolveVisibleSurfacePointForPart(PartInstance, 
 		BestCubeSize = CellSize
 	end
 
-	for YIndex = 0, SubdivisionNumber - 1 do
-		local YOffset = -HalfSize.Y + HalfStep.Y + StepSize.Y * YIndex
-		for ZIndex = 0, SubdivisionNumber - 1 do
-			local ZOffset = -HalfSize.Z + HalfStep.Z + StepSize.Z * ZIndex
-			EvaluateSurfacePoint(
-				Vector3.new(HalfSize.X, YOffset, ZOffset),
-				Vector3.new(HalfSize.X - ThicknessNumber / 2, YOffset, ZOffset),
-				Vector3.new(ThicknessNumber, StepSize.Y, StepSize.Z)
-			)
-			EvaluateSurfacePoint(
-				Vector3.new(-HalfSize.X, YOffset, ZOffset),
-				Vector3.new(-HalfSize.X + ThicknessNumber / 2, YOffset, ZOffset),
-				Vector3.new(ThicknessNumber, StepSize.Y, StepSize.Z)
-			)
+	local function EvaluateAxisFace(AxisString, AxisSignNumber)
+		if AxisString == "X" then
+			local FaceOffset = AxisSignNumber * HalfSize.X
+			local CenterOffset = AxisSignNumber * (HalfSize.X - ThicknessNumber / 2)
+			for YIndex = 0, SubdivisionNumber - 1 do
+				local YOffset = -HalfSize.Y + HalfStep.Y + StepSize.Y * YIndex
+				for ZIndex = 0, SubdivisionNumber - 1 do
+					local ZOffset = -HalfSize.Z + HalfStep.Z + StepSize.Z * ZIndex
+					EvaluateSurfacePoint(
+						Vector3.new(FaceOffset, YOffset, ZOffset),
+						Vector3.new(CenterOffset, YOffset, ZOffset),
+						Vector3.new(ThicknessNumber, StepSize.Y, StepSize.Z)
+					)
+				end
+			end
+			return
+		end
+
+		if AxisString == "Y" then
+			local FaceOffset = AxisSignNumber * HalfSize.Y
+			local CenterOffset = AxisSignNumber * (HalfSize.Y - ThicknessNumber / 2)
+			for XIndex = 0, SubdivisionNumber - 1 do
+				local XOffset = -HalfSize.X + HalfStep.X + StepSize.X * XIndex
+				for ZIndex = 0, SubdivisionNumber - 1 do
+					local ZOffset = -HalfSize.Z + HalfStep.Z + StepSize.Z * ZIndex
+					EvaluateSurfacePoint(
+						Vector3.new(XOffset, FaceOffset, ZOffset),
+						Vector3.new(XOffset, CenterOffset, ZOffset),
+						Vector3.new(StepSize.X, ThicknessNumber, StepSize.Z)
+					)
+				end
+			end
+			return
+		end
+
+		local FaceOffset = AxisSignNumber * HalfSize.Z
+		local CenterOffset = AxisSignNumber * (HalfSize.Z - ThicknessNumber / 2)
+		for XIndex = 0, SubdivisionNumber - 1 do
+			local XOffset = -HalfSize.X + HalfStep.X + StepSize.X * XIndex
+			for YIndex = 0, SubdivisionNumber - 1 do
+				local YOffset = -HalfSize.Y + HalfStep.Y + StepSize.Y * YIndex
+				EvaluateSurfacePoint(
+					Vector3.new(XOffset, YOffset, FaceOffset),
+					Vector3.new(XOffset, YOffset, CenterOffset),
+					Vector3.new(StepSize.X, StepSize.Y, ThicknessNumber)
+				)
+			end
 		end
 	end
 
-	for XIndex = 0, SubdivisionNumber - 1 do
-		local XOffset = -HalfSize.X + HalfStep.X + StepSize.X * XIndex
-		for ZIndex = 0, SubdivisionNumber - 1 do
-			local ZOffset = -HalfSize.Z + HalfStep.Z + StepSize.Z * ZIndex
-			EvaluateSurfacePoint(
-				Vector3.new(XOffset, HalfSize.Y, ZOffset),
-				Vector3.new(XOffset, HalfSize.Y - ThicknessNumber / 2, ZOffset),
-				Vector3.new(StepSize.X, ThicknessNumber, StepSize.Z)
-			)
-			EvaluateSurfacePoint(
-				Vector3.new(XOffset, -HalfSize.Y, ZOffset),
-				Vector3.new(XOffset, -HalfSize.Y + ThicknessNumber / 2, ZOffset),
-				Vector3.new(StepSize.X, ThicknessNumber, StepSize.Z)
-			)
-		end
-	end
-
-	for XIndex = 0, SubdivisionNumber - 1 do
-		local XOffset = -HalfSize.X + HalfStep.X + StepSize.X * XIndex
-		for YIndex = 0, SubdivisionNumber - 1 do
-			local YOffset = -HalfSize.Y + HalfStep.Y + StepSize.Y * YIndex
-			EvaluateSurfacePoint(
-				Vector3.new(XOffset, YOffset, HalfSize.Z),
-				Vector3.new(XOffset, YOffset, HalfSize.Z - ThicknessNumber / 2),
-				Vector3.new(StepSize.X, StepSize.Y, ThicknessNumber)
-			)
-			EvaluateSurfacePoint(
-				Vector3.new(XOffset, YOffset, -HalfSize.Z),
-				Vector3.new(XOffset, YOffset, -HalfSize.Z + ThicknessNumber / 2),
-				Vector3.new(StepSize.X, StepSize.Y, ThicknessNumber)
-			)
-		end
+	if UseNearFacesOnlyBoolean then
+		local LocalOriginVector3 = PartInstance.CFrame:PointToObjectSpace(CurrentVisibilityOriginVector3 or Camera.CFrame.Position)
+		EvaluateAxisFace("X", LocalOriginVector3.X >= 0 and 1 or -1)
+		EvaluateAxisFace("Y", LocalOriginVector3.Y >= 0 and 1 or -1)
+		EvaluateAxisFace("Z", LocalOriginVector3.Z >= 0 and 1 or -1)
+	else
+		EvaluateAxisFace("X", 1)
+		EvaluateAxisFace("X", -1)
+		EvaluateAxisFace("Y", 1)
+		EvaluateAxisFace("Y", -1)
+		EvaluateAxisFace("Z", 1)
+		EvaluateAxisFace("Z", -1)
 	end
 
 	if not BestPointVector3 then
@@ -8367,21 +8427,12 @@ function ShieldModeRuntimeTable.GetJailbirdVisiblePointForPart(PartInstance, Cha
 		return ProjectileArcVisibleTargetData
 	end
 
-	local VisibleTargetData = ShieldModeRuntimeTable.ResolveVisibleSurfacePointForPart(
-		PartInstance,
-		CharacterModel,
-		MouseLocationVector2,
-		math.max(VisibleCheckSubdivisionsNumber, 4)
-	)
-	if VisibleTargetData then
-		return VisibleTargetData
-	end
-
 	return ShieldModeRuntimeTable.ResolveVisibleSurfacePointForPart(
 		PartInstance,
 		CharacterModel,
 		MouseLocationVector2,
-		math.max(VisibleCheckSubdivisionsNumber + 2, 6)
+		math.min(math.max(VisibleCheckSubdivisionsNumber, 3), 4),
+		true
 	)
 end
 
