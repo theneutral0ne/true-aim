@@ -195,7 +195,7 @@ local PlayerListRuntimeTable: { [string]: any } = {
 	collapsed = false,
 	collapsedHeight = 36,
 }
-local EspRuntimeTable: { [string]: any } = {
+EspRuntimeTable = {
 	drawingsByCharacter = setmetatable({}, { __mode = "k" }),
 	entryCacheTable = {},
 	entryCacheKey = nil,
@@ -5936,7 +5936,7 @@ if IsBloodZonePlaceBoolean then
 	SillySkyVisibilityToggleButton.Parent = MenuFrame
 end
 
-local EspToggleButton = Instance.new("TextButton")
+EspToggleButton = Instance.new("TextButton")
 EspToggleButton.Name = "EspToggleButton"
 EspToggleButton.Size = UDim2.new(1, -20, 0, 20)
 EspToggleButton.Position = UDim2.new(0, 10, 0, IsBloodZonePlaceBoolean and 606 or 530)
@@ -5949,7 +5949,7 @@ EspToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 EspToggleButton.ZIndex = 101
 EspToggleButton.Parent = MenuFrame
 
-local EspSkeletonToggleButton = Instance.new("TextButton")
+EspSkeletonToggleButton = Instance.new("TextButton")
 EspSkeletonToggleButton.Name = "EspSkeletonToggleButton"
 EspSkeletonToggleButton.Size = UDim2.new(1, -20, 0, 20)
 EspSkeletonToggleButton.Position = UDim2.new(0, 10, 0, IsBloodZonePlaceBoolean and 630 or 554)
@@ -6221,7 +6221,7 @@ local function UpdateSillySkyVisibilityButtonAppearance()
 	end
 end
 
-local function UpdateEspToggleButtonAppearance()
+function UpdateEspToggleButtonAppearance()
 	if EspEnabledBoolean then
 		EspToggleButton.BackgroundColor3 = Color3.fromRGB(0, 125, 75)
 		EspToggleButton.Text = "ESP: ON"
@@ -6231,7 +6231,7 @@ local function UpdateEspToggleButtonAppearance()
 	end
 end
 
-local function UpdateEspSkeletonToggleButtonAppearance()
+function UpdateEspSkeletonToggleButtonAppearance()
 	if not EspEnabledBoolean then
 		EspSkeletonToggleButton.BackgroundColor3 = Color3.fromRGB(50, 58, 54)
 		EspSkeletonToggleButton.Text = "Skeleton ESP: LOCKED"
