@@ -6,7 +6,7 @@ if type(LoadStringFunction) ~= "function" then
 end
 
 local FetchSuccessBoolean, SourceString = pcall(function()
-	return game:HttpGet(SourceUrl)
+	return game.HttpGet(game, SourceUrl)
 end)
 if not FetchSuccessBoolean then
 	error("true-aim loader: failed to fetch remote source: " .. tostring(SourceString))
