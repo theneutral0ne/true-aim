@@ -320,15 +320,43 @@ MenuGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
 MenuGui.DisplayOrder = 9999
 MenuGui.Parent = gethui()
 
+UiResponsiveRuntimeTable = {
+	menuWidth = 230,
+	menuHeight = CurrentGameIntegrationMenuHeightNumber,
+	playerListWidth = 220,
+	narrowPlayerListHeight = 240,
+	gap = 10,
+	margin = 14,
+	narrowBreakpoint = 680,
+	minimumScale = 0.58,
+	scale = 1,
+	narrow = false,
+}
+
 MenuFrame = Instance.new("Frame")
 MenuFrame.Name = "MainFrame"
-MenuFrame.Size = UDim2.new(0, 230, 0, CurrentGameIntegrationMenuHeightNumber)
+MenuFrame.Size = UDim2.new(0, UiResponsiveRuntimeTable.menuWidth, 0, UiResponsiveRuntimeTable.menuHeight)
 MenuFrame.Position = UDim2.new(0, 20, 0, 200)
-MenuFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+MenuFrame.BackgroundColor3 = Color3.fromRGB(15, 20, 28)
+MenuFrame.BackgroundTransparency = 0.04
 MenuFrame.BorderSizePixel = 0
+MenuFrame.ClipsDescendants = false
 MenuFrame.Active = true
 MenuFrame.ZIndex = 100
 MenuFrame.Parent = MenuGui
+
+MenuScaleObject = Instance.new("UIScale")
+MenuScaleObject.Name = "ResponsiveScale"
+MenuScaleObject.Scale = 1
+MenuScaleObject.Parent = MenuFrame
+
+MenuBackgroundGradient = Instance.new("UIGradient")
+MenuBackgroundGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(22, 31, 44)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 14, 20)),
+})
+MenuBackgroundGradient.Rotation = 90
+MenuBackgroundGradient.Parent = MenuFrame
 
 TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
@@ -345,18 +373,33 @@ TitleLabel.Parent = MenuFrame
 
 PlayerListRuntimeTable.frame = Instance.new("Frame")
 PlayerListRuntimeTable.frame.Name = "PlayerListFrame"
-PlayerListRuntimeTable.frame.Size = UDim2.new(0, 220, 0, MenuFrame.Size.Y.Offset)
+PlayerListRuntimeTable.frame.Size = UDim2.new(0, UiResponsiveRuntimeTable.playerListWidth, 0, UiResponsiveRuntimeTable.menuHeight)
 PlayerListRuntimeTable.frame.Position = UDim2.new(
 	MenuFrame.Position.X.Scale,
 	MenuFrame.Position.X.Offset + MenuFrame.Size.X.Offset + 10,
 	MenuFrame.Position.Y.Scale,
 	MenuFrame.Position.Y.Offset
 )
-PlayerListRuntimeTable.frame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+PlayerListRuntimeTable.frame.BackgroundColor3 = Color3.fromRGB(14, 19, 27)
+PlayerListRuntimeTable.frame.BackgroundTransparency = 0.04
 PlayerListRuntimeTable.frame.BorderSizePixel = 0
+PlayerListRuntimeTable.frame.ClipsDescendants = true
 PlayerListRuntimeTable.frame.Active = true
 PlayerListRuntimeTable.frame.ZIndex = 100
 PlayerListRuntimeTable.frame.Parent = MenuGui
+
+PlayerListScaleObject = Instance.new("UIScale")
+PlayerListScaleObject.Name = "ResponsiveScale"
+PlayerListScaleObject.Scale = 1
+PlayerListScaleObject.Parent = PlayerListRuntimeTable.frame
+
+PlayerListBackgroundGradient = Instance.new("UIGradient")
+PlayerListBackgroundGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(21, 29, 41)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(9, 13, 19)),
+})
+PlayerListBackgroundGradient.Rotation = 90
+PlayerListBackgroundGradient.Parent = PlayerListRuntimeTable.frame
 
 PlayerListRuntimeTable.titleLabel = Instance.new("TextLabel")
 PlayerListRuntimeTable.titleLabel.Name = "PlayerListTitleLabel"
@@ -413,9 +456,15 @@ DebugFrame.Size = UDim2.new(0, 300, 0, 72)
 DebugFrame.Position = UDim2.new(0, 260, 0, 200)
 DebugFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
 DebugFrame.BorderSizePixel = 0
+DebugFrame.ClipsDescendants = true
 DebugFrame.Visible = DebugModeEnabledBoolean
 DebugFrame.ZIndex = 100
 DebugFrame.Parent = MenuGui
+
+DebugScaleObject = Instance.new("UIScale")
+DebugScaleObject.Name = "ResponsiveScale"
+DebugScaleObject.Scale = 1
+DebugScaleObject.Parent = DebugFrame
 
 DebugStatusLabel = Instance.new("TextLabel")
 DebugStatusLabel.Name = "DebugStatusLabel"
@@ -431,6 +480,37 @@ DebugStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
 DebugStatusLabel.TextYAlignment = Enum.TextYAlignment.Top
 DebugStatusLabel.ZIndex = 101
 DebugStatusLabel.Parent = DebugFrame
+
+function ApplyAimbotUiDecoration(GuiObject, CornerRadiusNumber, StrokeColor3)
+	if not GuiObject then
+		return
+	end
+	if GuiObject.IsA(GuiObject, "TextButton") then
+		GuiObject.AutoButtonColor = false
+	end
+
+	local CornerObject = GuiObject.FindFirstChild(GuiObject, "AimbotCorner")
+	if not CornerObject then
+		CornerObject = Instance.new("UICorner")
+		CornerObject.Name = "AimbotCorner"
+		CornerObject.Parent = GuiObject
+	end
+	CornerObject.CornerRadius = UDim.new(0, CornerRadiusNumber or 6)
+
+	local StrokeObject = GuiObject.FindFirstChild(GuiObject, "AimbotStroke")
+	if not StrokeObject then
+		StrokeObject = Instance.new("UIStroke")
+		StrokeObject.Name = "AimbotStroke"
+		StrokeObject.Parent = GuiObject
+	end
+	StrokeObject.Color = StrokeColor3 or Color3.fromRGB(65, 85, 110)
+	StrokeObject.Thickness = 1
+	StrokeObject.Transparency = 0.35
+end
+
+ApplyAimbotUiDecoration(MenuFrame, 8, Color3.fromRGB(55, 105, 155))
+ApplyAimbotUiDecoration(PlayerListRuntimeTable.frame, 8, Color3.fromRGB(55, 105, 155))
+ApplyAimbotUiDecoration(DebugFrame, 8, Color3.fromRGB(140, 110, 55))
 
 local function SafeDebugName(Value)
 	if Value == nil then
@@ -1514,6 +1594,7 @@ function PlayerListRuntimeTable.GetOrCreateEntryButton(PlayerObject)
 	EntryButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 	EntryButton.ZIndex = 102
 	EntryButton.Parent = PlayerListRuntimeTable.scrollFrame
+	ApplyAimbotUiDecoration(EntryButton, 5, Color3.fromRGB(60, 80, 105))
 
 	local NameLabel = Instance.new("TextLabel")
 	NameLabel.Name = "NameLabel"
@@ -5778,6 +5859,31 @@ if IsBloodZonePlaceBoolean then
 	SillySkyVisibilityToggleButton.Parent = MenuFrame
 end
 
+ApplyAimbotUiDecoration(SmoothSliderBackFrame, 4, Color3.fromRGB(55, 105, 155))
+ApplyAimbotUiDecoration(SmoothSliderKnobFrame, 4, Color3.fromRGB(170, 205, 235))
+ApplyAimbotUiDecoration(FovSliderBackFrame, 4, Color3.fromRGB(55, 135, 105))
+ApplyAimbotUiDecoration(FovSliderKnobFrame, 4, Color3.fromRGB(175, 235, 205))
+ApplyAimbotUiDecoration(HookHitChanceSliderBackFrame, 4, Color3.fromRGB(145, 115, 45))
+ApplyAimbotUiDecoration(HookHitChanceSliderKnobFrame, 4, Color3.fromRGB(240, 215, 155))
+ApplyAimbotUiDecoration(HeadshotToggleButton, 5, Color3.fromRGB(130, 70, 80))
+ApplyAimbotUiDecoration(AutoFireToggleButton, 5, Color3.fromRGB(55, 115, 175))
+ApplyAimbotUiDecoration(VisibleCheckToggleButton, 5, Color3.fromRGB(45, 140, 140))
+ApplyAimbotUiDecoration(TargetSegmentationToggleButton, 5, Color3.fromRGB(85, 95, 110))
+ApplyAimbotUiDecoration(FovToggleButton, 5, Color3.fromRGB(90, 105, 120))
+ApplyAimbotUiDecoration(TargetLineToggleButton, 5, Color3.fromRGB(90, 105, 120))
+ApplyAimbotUiDecoration(LockKeyToggleButton, 5, Color3.fromRGB(135, 125, 45))
+ApplyAimbotUiDecoration(HookMethodToggleButton, 5, Color3.fromRGB(120, 80, 160))
+ApplyAimbotUiDecoration(StickyAimToggleButton, 5, Color3.fromRGB(95, 105, 120))
+if SillyModeToggleButton then
+	ApplyAimbotUiDecoration(SillyModeToggleButton, 5, Color3.fromRGB(135, 70, 145))
+end
+if ShieldModeToggleButton then
+	ApplyAimbotUiDecoration(ShieldModeToggleButton, 5, Color3.fromRGB(85, 100, 145))
+end
+if SillySkyVisibilityToggleButton then
+	ApplyAimbotUiDecoration(SillySkyVisibilityToggleButton, 5, Color3.fromRGB(70, 115, 155))
+end
+
 CreateSectionHeader("Targeting", 150)
 CreateSectionHeader("Visibility", 274)
 CreateSectionHeader("Behavior", 354)
@@ -6430,6 +6536,107 @@ local MenuIsOpenBoolean = true
 local MenuOpenPosition = MenuFrame.Position
 local MenuClosedPosition = UDim2.new(MenuOpenPosition.X.Scale, MenuOpenPosition.X.Offset, MenuOpenPosition.Y.Scale, MenuOpenPosition.Y.Offset - 150)
 local MenuTweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+function UpdateResponsiveUiLayout()
+	local CurrentCamera = WorkspaceService.CurrentCamera or Camera
+	local ViewportSizeVector2 = CurrentCamera and CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+	local ViewportWidthNumber = math.max(ViewportSizeVector2.X, 1)
+	local ViewportHeightNumber = math.max(ViewportSizeVector2.Y, 1)
+	local MenuWidthNumber = UiResponsiveRuntimeTable.menuWidth
+	local MenuHeightNumber = UiResponsiveRuntimeTable.menuHeight
+	local PlayerListWidthNumber = UiResponsiveRuntimeTable.playerListWidth
+	local GapNumber = UiResponsiveRuntimeTable.gap
+	local MarginNumber = UiResponsiveRuntimeTable.margin
+	local IsNarrowBoolean = ViewportWidthNumber < UiResponsiveRuntimeTable.narrowBreakpoint
+	local PlayerListHeightNumber = IsNarrowBoolean
+		and UiResponsiveRuntimeTable.narrowPlayerListHeight
+		or MenuHeightNumber
+	local ScaleNumber
+
+	if IsNarrowBoolean then
+		local AvailableWidthNumber = math.max(ViewportWidthNumber - MarginNumber * 2, 1)
+		local AvailableHeightNumber = math.max(ViewportHeightNumber - MarginNumber * 2 - GapNumber, 1)
+		ScaleNumber = math.min(
+			1,
+			AvailableWidthNumber / MenuWidthNumber,
+			AvailableHeightNumber / (MenuHeightNumber + PlayerListHeightNumber)
+		)
+	else
+		local AvailableWidthNumber = math.max(ViewportWidthNumber - MarginNumber * 2 - GapNumber, 1)
+		local AvailableHeightNumber = math.max(ViewportHeightNumber - MarginNumber * 2, 1)
+		ScaleNumber = math.min(
+			1,
+			AvailableWidthNumber / (MenuWidthNumber + PlayerListWidthNumber),
+			AvailableHeightNumber / MenuHeightNumber
+		)
+	end
+
+	ScaleNumber = math.max(ScaleNumber, UiResponsiveRuntimeTable.minimumScale)
+	local MenuWidthScaledNumber = MenuWidthNumber * ScaleNumber
+	local MenuHeightScaledNumber = MenuHeightNumber * ScaleNumber
+	local PlayerListWidthScaledNumber = PlayerListWidthNumber * ScaleNumber
+	local PlayerListHeightScaledNumber = PlayerListHeightNumber * ScaleNumber
+	local MenuXOffsetNumber
+	local MenuYOffsetNumber
+	local PlayerListXOffsetNumber
+	local PlayerListYOffsetNumber
+
+	if IsNarrowBoolean then
+		local TotalHeightScaledNumber = MenuHeightScaledNumber + GapNumber + PlayerListHeightScaledNumber
+		MenuXOffsetNumber = math.max(MarginNumber, (ViewportWidthNumber - MenuWidthScaledNumber) / 2)
+		MenuYOffsetNumber = math.max(MarginNumber, (ViewportHeightNumber - TotalHeightScaledNumber) / 2)
+		PlayerListXOffsetNumber = MenuXOffsetNumber
+		PlayerListYOffsetNumber = MenuYOffsetNumber + MenuHeightScaledNumber + GapNumber
+	else
+		local TotalWidthScaledNumber = MenuWidthScaledNumber + GapNumber + PlayerListWidthScaledNumber
+		MenuXOffsetNumber = math.max(MarginNumber, (ViewportWidthNumber - TotalWidthScaledNumber) / 2)
+		MenuYOffsetNumber = math.max(MarginNumber, (ViewportHeightNumber - MenuHeightScaledNumber) / 2)
+		PlayerListXOffsetNumber = MenuXOffsetNumber + MenuWidthScaledNumber + GapNumber
+		PlayerListYOffsetNumber = MenuYOffsetNumber
+	end
+
+	UiResponsiveRuntimeTable.scale = ScaleNumber
+	UiResponsiveRuntimeTable.narrow = IsNarrowBoolean
+	MenuScaleObject.Scale = ScaleNumber
+	PlayerListScaleObject.Scale = ScaleNumber
+	DebugScaleObject.Scale = ScaleNumber
+	MenuFrame.Size = UDim2.new(0, MenuWidthNumber, 0, MenuHeightNumber)
+	PlayerListRuntimeTable.frame.Size = UDim2.new(0, PlayerListWidthNumber, 0, PlayerListHeightNumber)
+	MenuOpenPosition = UDim2.new(0, math.floor(MenuXOffsetNumber + 0.5), 0, math.floor(MenuYOffsetNumber + 0.5))
+	MenuClosedPosition = UDim2.new(
+		0,
+		math.floor(MenuXOffsetNumber + 0.5),
+		0,
+		math.floor(MenuYOffsetNumber - math.max(90, 150 * ScaleNumber) + 0.5)
+	)
+	MenuFrame.Position = MenuIsOpenBoolean and MenuOpenPosition or MenuClosedPosition
+	PlayerListRuntimeTable.frame.Position = UDim2.new(
+		0,
+		math.floor(PlayerListXOffsetNumber + 0.5),
+		0,
+		math.floor(PlayerListYOffsetNumber + 0.5)
+	)
+
+	local DebugXOffsetNumber = PlayerListXOffsetNumber + PlayerListWidthScaledNumber + GapNumber
+	local DebugYOffsetNumber = MenuYOffsetNumber
+	if DebugXOffsetNumber + 300 * ScaleNumber > ViewportWidthNumber - MarginNumber then
+		DebugXOffsetNumber = MenuXOffsetNumber
+		DebugYOffsetNumber = PlayerListYOffsetNumber + PlayerListHeightScaledNumber + GapNumber
+	end
+	DebugFrame.Position = UDim2.new(
+		0,
+		math.floor(DebugXOffsetNumber + 0.5),
+		0,
+		math.floor(DebugYOffsetNumber + 0.5)
+	)
+end
+
+UpdateResponsiveUiLayout()
+if Camera and Camera.GetPropertyChangedSignal then
+	Camera.GetPropertyChangedSignal(Camera, "ViewportSize").Connect(Camera.GetPropertyChangedSignal(Camera, "ViewportSize"), function()
+		UpdateResponsiveUiLayout()
+	end)
+end
 
 MenuFrame.Position = MenuOpenPosition
 MenuFrame.Visible = true
