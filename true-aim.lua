@@ -134,8 +134,8 @@ FrameCharacterAliveCacheTable = {}
 FrameCharacterVelocityCacheTable = {}
 ObservedCharacterVelocitySampleByModelTable = setmetatable({}, { __mode = "k" })
 JailbirdVisibilityRuntimeTable = {
-	passThroughNameFragments = { "window", "glass" },
 	passThroughByPart = setmetatable({}, { __mode = "k" }),
+	mapCacheInstance = nil,
 }
 
 
@@ -7260,6 +7260,63 @@ function SafeGetPartBooleanProperty(PartInstance, PropertyNameString, DefaultBoo
 	return DefaultBoolean == true
 end
 
+function SafeGetBooleanAttribute(InstanceObject, AttributeNameString)
+	if not InstanceObject
+		or type(AttributeNameString) ~= "string"
+		or not InstanceObject.GetAttribute then
+		return nil
+	end
+
+	local SuccessBoolean, AttributeValue = pcall(InstanceObject.GetAttribute, InstanceObject, AttributeNameString)
+	if not SuccessBoolean then
+		return nil
+	end
+
+	if type(AttributeValue) == "boolean" then
+		return AttributeValue
+	end
+
+	if type(AttributeValue) == "number" then
+		return AttributeValue ~= 0
+	end
+
+	if type(AttributeValue) == "string" then
+		local LowercaseValueString = GetLowercaseCachedName(AttributeValue)
+		if LowercaseValueString == "true"
+			or LowercaseValueString == "1"
+			or LowercaseValueString == "yes" then
+			return true
+		end
+		if LowercaseValueString == "false"
+			or LowercaseValueString == "0"
+			or LowercaseValueString == "no" then
+			return false
+		end
+	end
+
+	return nil
+end
+
+function SafeHasCollectionTag(InstanceObject, TagNameString)
+	if not InstanceObject or type(TagNameString) ~= "string" then
+		return false
+	end
+
+	local SuccessBoolean, HasTagBoolean = pcall(CollectionService.HasTag, CollectionService, InstanceObject, TagNameString)
+	return SuccessBoolean and HasTagBoolean == true
+end
+
+function JailbirdVisibilityRuntimeTable.GetMapCacheInstance()
+	local MapCacheInstance = JailbirdVisibilityRuntimeTable.mapCacheInstance
+	if MapCacheInstance and MapCacheInstance.Parent then
+		return MapCacheInstance
+	end
+
+	MapCacheInstance = WorkspaceService and WorkspaceService.FindFirstChild and WorkspaceService.FindFirstChild(WorkspaceService, "Map_Cache") or nil
+	JailbirdVisibilityRuntimeTable.mapCacheInstance = MapCacheInstance
+	return MapCacheInstance
+end
+
 function JailbirdVisibilityRuntimeTable.IsPassThroughPart(PartInstance)
 	if not IsJailbirdPlaceBoolean
 		or not PartInstance
@@ -7279,26 +7336,14 @@ function JailbirdVisibilityRuntimeTable.IsPassThroughPart(PartInstance)
 		return false
 	end
 
-	local IsWindowLikeBoolean = IsGlassVisibilityPart(PartInstance)
-	if not IsWindowLikeBoolean then
-		IsWindowLikeBoolean = JailbirdVisibilityRuntimeTable.DoesInstanceHierarchyMatchFragments(
-			PartInstance,
-			JailbirdVisibilityRuntimeTable.passThroughNameFragments,
-			2
-		)
-	end
-	if not IsWindowLikeBoolean then
-		JailbirdVisibilityRuntimeTable.passThroughByPart[PartInstance] = false
-		return false
+	if PartInstance.Transparency >= 1 then
+		JailbirdVisibilityRuntimeTable.passThroughByPart[PartInstance] = true
+		return true
 	end
 
-	local TransparencyNumber = tonumber(PartInstance.Transparency) or 0
-	local CanCollideBoolean = SafeGetPartBooleanProperty(PartInstance, "CanCollide", true)
-	local CanQueryBoolean = SafeGetPartBooleanProperty(PartInstance, "CanQuery", true)
-	local IsPassThroughBoolean = PartInstance.Material == Enum.Material.Glass
-		or TransparencyNumber >= 0.15
-		or not CanCollideBoolean
-		or not CanQueryBoolean
+	local IsPassThroughBoolean = SafeHasCollectionTag(PartInstance, "IgnoreBullet")
+		or PartInstance.Name == "Glass_Breakable"
+		or SafeGetBooleanAttribute(PartInstance, "IgnoreBullet") == true
 	JailbirdVisibilityRuntimeTable.passThroughByPart[PartInstance] = IsPassThroughBoolean
 	return IsPassThroughBoolean
 end
@@ -7455,6 +7500,20 @@ RaycastBetweenIgnoringGlass = function(OriginVector3, TargetPositionVector3, Ext
 	local HasExtraIgnoredInstancesBoolean = ExtraIgnoredInstancesTable and #ExtraIgnoredInstancesTable > 0
 	local CurrentOriginVector3 = OriginVector3
 	local RemainingDistanceNumber = FullDistanceNumber
+
+	if IsJailbirdPlaceBoolean then
+		local MapCacheInstance = JailbirdVisibilityRuntimeTable.GetMapCacheInstance()
+		if MapCacheInstance then
+			MutableIgnoredInstancesTable = {}
+			if HasExtraIgnoredInstancesBoolean then
+				for _, IgnoredInstance in ipairs(ExtraIgnoredInstancesTable) do
+					AppendUniqueIgnoredInstance(MutableIgnoredInstancesTable, IgnoredInstance)
+				end
+			end
+			AppendUniqueIgnoredInstance(MutableIgnoredInstancesTable, MapCacheInstance)
+			HasExtraIgnoredInstancesBoolean = #MutableIgnoredInstancesTable > 0
+		end
+	end
 
 	for _ = 1, 16 do
 		local ActiveIgnoredInstancesTable = MutableIgnoredInstancesTable
@@ -8402,7 +8461,7 @@ function ShieldModeRuntimeTable.GetJailbirdVisiblePointForPart(PartInstance, Cha
 		PartInstance,
 		CharacterModel,
 		MouseLocationVector2,
-		math.min(math.max(VisibleCheckSubdivisionsNumber, 3), 4),
+		3,
 		true
 	)
 end
