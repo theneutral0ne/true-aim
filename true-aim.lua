@@ -131,6 +131,15 @@ FrameVisiblePointCacheTable = {}
 FrameCharacterAliveCacheTable = {}
 FrameCharacterVelocityCacheTable = {}
 ObservedCharacterVelocitySampleByModelTable = setmetatable({}, { __mode = "k" })
+JailbirdVisibilityRuntimeTable = {
+	classificationByPart = setmetatable({}, { __mode = "k" }),
+	blockingParts = {},
+	blockingLookup = setmetatable({}, { __mode = "k" }),
+	trackingInitialized = false,
+	needsCompaction = false,
+	blockerNameFragments = { "barricade", "shield", "door frame" },
+	passThroughNameFragments = { "window", "glass" },
+}
 
 
 local GameIntegrationProfilesByPlaceIdTable = {
@@ -144,10 +153,14 @@ local GameIntegrationProfilesByPlaceIdTable = {
 		playerListEntryStateCacheDuration = 0.05,
 		menuHeight = 572,
 	},
+	[14939963714] = {
+		id = "jailbird",
+	},
 }
 CurrentGameIntegrationProfileTable = GameIntegrationProfilesByPlaceIdTable[game.PlaceId]
 CurrentGameIntegrationIdString = CurrentGameIntegrationProfileTable and CurrentGameIntegrationProfileTable.id or nil
 IsBloodZonePlaceBoolean = (CurrentGameIntegrationIdString == "bloodzone")
+IsJailbirdPlaceBoolean = (CurrentGameIntegrationIdString == "jailbird")
 IsCustomCharacterGameBoolean = CurrentGameIntegrationProfileTable ~= nil
 	and CurrentGameIntegrationProfileTable.usesCustomCharacters == true
 UseCustomScopeCheckBoolean = CurrentGameIntegrationProfileTable ~= nil
@@ -6876,6 +6889,157 @@ function IsHeadLikeTargetPart(PartInstance)
 	return HeadLikeBoolean
 end
 
+function JailbirdVisibilityRuntimeTable.DoesNameMatchFragments(NameString, NameFragmentsTable)
+	if type(NameString) ~= "string" or type(NameFragmentsTable) ~= "table" then
+		return false
+	end
+
+	local LowercaseNameString = GetLowercaseCachedName(NameString)
+	for _, NameFragmentString in ipairs(NameFragmentsTable) do
+		if string.find(LowercaseNameString, NameFragmentString, 1, true) then
+			return true
+		end
+	end
+
+	return false
+end
+
+function JailbirdVisibilityRuntimeTable.DoesInstanceHierarchyMatchFragments(InstanceObject, NameFragmentsTable, MaximumDepthNumber)
+	local CurrentInstance = InstanceObject
+	local RemainingDepthNumber = tonumber(MaximumDepthNumber) or 0
+	while CurrentInstance and RemainingDepthNumber >= 0 do
+		if JailbirdVisibilityRuntimeTable.DoesNameMatchFragments(CurrentInstance.Name, NameFragmentsTable) then
+			return true
+		end
+		CurrentInstance = CurrentInstance.Parent
+		RemainingDepthNumber = RemainingDepthNumber - 1
+	end
+
+	return false
+end
+
+function JailbirdVisibilityRuntimeTable.IsCharacterRelatedPart(PartInstance)
+	local CurrentInstance = PartInstance
+	for _ = 1, 6 do
+		if not CurrentInstance then
+			return false
+		end
+		if CurrentInstance.ClassName == "Model"
+			and IsHumanoidCharacterModel(CurrentInstance)
+			and GetCharacterRootPart(CurrentInstance) then
+			return true
+		end
+		CurrentInstance = CurrentInstance.Parent
+	end
+
+	return false
+end
+
+function JailbirdVisibilityRuntimeTable.GetPartClassification(PartInstance)
+	if not IsJailbirdPlaceBoolean
+		or not PartInstance
+		or not PartInstance.Parent
+		or not PartInstance.IsA
+		or not PartInstance.IsA(PartInstance, "BasePart") then
+		return nil
+	end
+
+	local CachedClassificationValue = JailbirdVisibilityRuntimeTable.classificationByPart[PartInstance]
+	if CachedClassificationValue ~= nil then
+		return CachedClassificationValue ~= false and CachedClassificationValue or nil
+	end
+
+	local ClassificationValue = nil
+	if not JailbirdVisibilityRuntimeTable.IsCharacterRelatedPart(PartInstance) then
+		if JailbirdVisibilityRuntimeTable.DoesInstanceHierarchyMatchFragments(
+			PartInstance,
+			JailbirdVisibilityRuntimeTable.blockerNameFragments,
+			3
+		) then
+			ClassificationValue = "block"
+		else
+			local IsWindowLikeBoolean = JailbirdVisibilityRuntimeTable.DoesInstanceHierarchyMatchFragments(
+				PartInstance,
+				JailbirdVisibilityRuntimeTable.passThroughNameFragments,
+				2
+			)
+			if IsWindowLikeBoolean then
+				local TransparencyNumber = tonumber(PartInstance.Transparency) or 0
+				if PartInstance.Material == Enum.Material.Glass or TransparencyNumber >= 0.2 then
+					ClassificationValue = "ignore"
+				end
+			end
+		end
+	end
+
+	JailbirdVisibilityRuntimeTable.classificationByPart[PartInstance] = ClassificationValue or false
+	return ClassificationValue
+end
+
+function JailbirdVisibilityRuntimeTable.AddBlockingPart(PartInstance)
+	if JailbirdVisibilityRuntimeTable.GetPartClassification(PartInstance) ~= "block"
+		or JailbirdVisibilityRuntimeTable.blockingLookup[PartInstance] then
+		return
+	end
+
+	JailbirdVisibilityRuntimeTable.blockingLookup[PartInstance] = true
+	JailbirdVisibilityRuntimeTable.blockingParts[#JailbirdVisibilityRuntimeTable.blockingParts + 1] = PartInstance
+end
+
+function JailbirdVisibilityRuntimeTable.CompactBlockingParts()
+	if not JailbirdVisibilityRuntimeTable.needsCompaction then
+		return
+	end
+
+	local NextIndexNumber = 1
+	for _, PartInstance in ipairs(JailbirdVisibilityRuntimeTable.blockingParts) do
+		if PartInstance and PartInstance.Parent and JailbirdVisibilityRuntimeTable.blockingLookup[PartInstance] then
+			JailbirdVisibilityRuntimeTable.blockingParts[NextIndexNumber] = PartInstance
+			NextIndexNumber = NextIndexNumber + 1
+		end
+	end
+	for IndexNumber = NextIndexNumber, #JailbirdVisibilityRuntimeTable.blockingParts do
+		JailbirdVisibilityRuntimeTable.blockingParts[IndexNumber] = nil
+	end
+
+	JailbirdVisibilityRuntimeTable.needsCompaction = false
+end
+
+function JailbirdVisibilityRuntimeTable.EnsureTracking()
+	if not IsJailbirdPlaceBoolean or JailbirdVisibilityRuntimeTable.trackingInitialized then
+		return
+	end
+
+	JailbirdVisibilityRuntimeTable.trackingInitialized = true
+	for _, DescendantInstance in ipairs(WorkspaceService.GetDescendants(WorkspaceService)) do
+		if DescendantInstance.IsA and DescendantInstance.IsA(DescendantInstance, "BasePart") then
+			JailbirdVisibilityRuntimeTable.AddBlockingPart(DescendantInstance)
+		end
+	end
+
+	WorkspaceService.DescendantAdded.Connect(WorkspaceService.DescendantAdded, function(DescendantInstance)
+		if DescendantInstance and DescendantInstance.IsA and DescendantInstance.IsA(DescendantInstance, "BasePart") then
+			JailbirdVisibilityRuntimeTable.AddBlockingPart(DescendantInstance)
+		end
+	end)
+
+	WorkspaceService.DescendantRemoving.Connect(WorkspaceService.DescendantRemoving, function(DescendantInstance)
+		if not DescendantInstance then
+			return
+		end
+
+		JailbirdVisibilityRuntimeTable.classificationByPart[DescendantInstance] = nil
+		if JailbirdVisibilityRuntimeTable.blockingLookup[DescendantInstance] then
+			JailbirdVisibilityRuntimeTable.blockingLookup[DescendantInstance] = nil
+			JailbirdVisibilityRuntimeTable.needsCompaction = true
+		end
+	end)
+end
+
+function JailbirdVisibilityRuntimeTable.IsPassThroughPart(PartInstance)
+	return JailbirdVisibilityRuntimeTable.GetPartClassification(PartInstance) == "ignore"
+end
+
 local function CloneRaycastParamsWithIgnoredInstances(BaseRaycastParamsObject, ExtraIgnoredInstancesTable)
 	local RaycastParamsObject = RaycastParams.new()
 	if BaseRaycastParamsObject then
@@ -7011,6 +7175,30 @@ local function IsTargetPointBlockedByMetalShield(TargetPositionVector3, Characte
 	return false
 end
 
+local function IsTargetPointBlockedByJailbirdCover(TargetPositionVector3, CharacterModel)
+	if not IsJailbirdPlaceBoolean or typeof(TargetPositionVector3) ~= "Vector3" then
+		return false
+	end
+
+	JailbirdVisibilityRuntimeTable.EnsureTracking()
+	JailbirdVisibilityRuntimeTable.CompactBlockingParts()
+
+	local VisibilityOriginVector3 = CurrentVisibilityOriginVector3 or Camera.CFrame.Position
+	local LocalCharacterModel = CurrentFrameLocalCharacterReadyBoolean and CurrentFrameLocalCharacterModel or ResolveCharacterModelForPlayer(LocalPlayer)
+	for _, BlockerPartInstance in ipairs(JailbirdVisibilityRuntimeTable.blockingParts) do
+		if BlockerPartInstance
+			and BlockerPartInstance.Parent
+			and BlockerPartInstance.Transparency < 0.95
+			and (not LocalCharacterModel or not BlockerPartInstance.IsDescendantOf(BlockerPartInstance, LocalCharacterModel))
+			and (not CharacterModel or not BlockerPartInstance.IsDescendantOf(BlockerPartInstance, CharacterModel))
+			and DoesSegmentIntersectPartBounds(VisibilityOriginVector3, TargetPositionVector3, BlockerPartInstance) then
+			return true
+		end
+	end
+
+	return false
+end
+
 RaycastBetweenIgnoringGlass = function(OriginVector3, TargetPositionVector3, ExtraIgnoredInstancesTable)
 	if not OriginVector3 or not TargetPositionVector3 then
 		return nil
@@ -7046,7 +7234,8 @@ RaycastBetweenIgnoringGlass = function(OriginVector3, TargetPositionVector3, Ext
 			return nil
 		end
 
-		if not IsGlassVisibilityPart(RaycastResult.Instance) then
+		if not IsGlassVisibilityPart(RaycastResult.Instance)
+			and not JailbirdVisibilityRuntimeTable.IsPassThroughPart(RaycastResult.Instance) then
 			return RaycastResult
 		end
 
@@ -7081,7 +7270,7 @@ local function IsVisible(TargetPositionVector3, CharacterModel, PartInstance)
 
 	local Result = RaycastToTargetIgnoringGlass(TargetPositionVector3)
 	if not Result then
-		return true
+		return not IsTargetPointBlockedByJailbirdCover(TargetPositionVector3, CharacterModel)
 	end
 
 	local HitTargetBoolean = false
@@ -7091,6 +7280,9 @@ local function IsVisible(TargetPositionVector3, CharacterModel, PartInstance)
 		HitTargetBoolean = Result.Instance.IsDescendantOf(Result.Instance, CharacterModel)
 	end
 	if HitTargetBoolean then
+		if IsTargetPointBlockedByJailbirdCover(TargetPositionVector3, CharacterModel) then
+			return false
+		end
 		return true
 	end
 
@@ -7269,34 +7461,9 @@ local function GetProjectileArcVisibleTargetData(PartInstance, CharacterModel)
 	}
 end
 
-local function GetVisiblePointForPart(PartInstance, CharacterModel, MouseLocationVector2)
-	if not IsEffectiveTargetSegmentationEnabled() then
-		local CenterPointVector3 = PartInstance.Position
-		if not IsVisible(CenterPointVector3, CharacterModel, PartInstance) then
-			return GetProjectileArcVisibleTargetData(PartInstance, CharacterModel)
-		end
-		return {
-			point = CenterPointVector3,
-			cubeCFrame = PartInstance.CFrame,
-			cubeSize = PartInstance.Size,
-		}
-	end
+function ShieldModeRuntimeTable.ResolveVisibleSurfacePointForPart(PartInstance, CharacterModel, MouseLocationVector2, SubdivisionNumber)
+	SubdivisionNumber = math.max(tonumber(SubdivisionNumber) or 1, 1)
 
-	local CenterPointVector3 = PartInstance.Position
-	if IsVisible(CenterPointVector3, CharacterModel, PartInstance) then
-		return {
-			point = CenterPointVector3,
-			cubeCFrame = PartInstance.CFrame,
-			cubeSize = PartInstance.Size,
-		}
-	end
-
-	local ProjectileArcVisibleTargetData = GetProjectileArcVisibleTargetData(PartInstance, CharacterModel)
-	if ProjectileArcVisibleTargetData then
-		return ProjectileArcVisibleTargetData
-	end
-
-	local SubdivisionNumber = math.max(VisibleCheckSubdivisionsNumber, 1)
 	local PartSize = PartInstance.Size
 	local HalfSize = PartSize * 0.5
 	local StepSize = Vector3.new(PartSize.X / SubdivisionNumber, PartSize.Y / SubdivisionNumber, PartSize.Z / SubdivisionNumber)
@@ -7388,6 +7555,62 @@ local function GetVisiblePointForPart(PartInstance, CharacterModel, MouseLocatio
 		cubeCFrame = BestCubeCFrame,
 		cubeSize = BestCubeSize,
 	}
+end
+
+function ShieldModeRuntimeTable.GetJailbirdVisiblePointForPart(PartInstance, CharacterModel, MouseLocationVector2)
+	local CenterPointVector3 = PartInstance.Position
+	if IsVisible(CenterPointVector3, CharacterModel, PartInstance) then
+		return {
+			point = CenterPointVector3,
+			cubeCFrame = PartInstance.CFrame,
+			cubeSize = PartInstance.Size,
+		}
+	end
+
+	local ProjectileArcVisibleTargetData = GetProjectileArcVisibleTargetData(PartInstance, CharacterModel)
+	if ProjectileArcVisibleTargetData then
+		return ProjectileArcVisibleTargetData
+	end
+
+	return ShieldModeRuntimeTable.ResolveVisibleSurfacePointForPart(PartInstance, CharacterModel, MouseLocationVector2, 2)
+end
+
+local function GetVisiblePointForPart(PartInstance, CharacterModel, MouseLocationVector2)
+	if not IsEffectiveTargetSegmentationEnabled() then
+		if IsJailbirdPlaceBoolean then
+			return ShieldModeRuntimeTable.GetJailbirdVisiblePointForPart(PartInstance, CharacterModel, MouseLocationVector2)
+		end
+		local CenterPointVector3 = PartInstance.Position
+		if not IsVisible(CenterPointVector3, CharacterModel, PartInstance) then
+			return GetProjectileArcVisibleTargetData(PartInstance, CharacterModel)
+		end
+		return {
+			point = CenterPointVector3,
+			cubeCFrame = PartInstance.CFrame,
+			cubeSize = PartInstance.Size,
+		}
+	end
+
+	local CenterPointVector3 = PartInstance.Position
+	if IsVisible(CenterPointVector3, CharacterModel, PartInstance) then
+		return {
+			point = CenterPointVector3,
+			cubeCFrame = PartInstance.CFrame,
+			cubeSize = PartInstance.Size,
+		}
+	end
+
+	local ProjectileArcVisibleTargetData = GetProjectileArcVisibleTargetData(PartInstance, CharacterModel)
+	if ProjectileArcVisibleTargetData then
+		return ProjectileArcVisibleTargetData
+	end
+
+	return ShieldModeRuntimeTable.ResolveVisibleSurfacePointForPart(
+		PartInstance,
+		CharacterModel,
+		MouseLocationVector2,
+		VisibleCheckSubdivisionsNumber
+	)
 end
 
 function ShieldModeRuntimeTable.RejectTargetDataForPart(ReasonKey, DebugKey, CharacterModel, PartInstance, MessageString)
