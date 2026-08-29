@@ -6954,11 +6954,11 @@ UserInputService.InputBegan.Connect(UserInputService.InputBegan, function(InputO
 	end
 end)
 
-local function IsPointInCircle(PointVector2, CircleCenterVector2, CircleRadiusNumber)
+function IsPointInCircle(PointVector2, CircleCenterVector2, CircleRadiusNumber)
 	return (PointVector2 - CircleCenterVector2).Magnitude <= CircleRadiusNumber
 end
 
-local function GetCubeSize(TargetPart)
+function GetCubeSize(TargetPart)
 	if IsEffectiveVisibleCheckEnabled() and IsEffectiveTargetSegmentationEnabled() then
 		local SegmentCount = math.max(VisibleCheckSubdivisionsNumber, 1)
 		return Vector3.new(
@@ -6970,7 +6970,7 @@ local function GetCubeSize(TargetPart)
 	return TargetPart.Size
 end
 
-local function GetCubeCorners(CubeCFrame, CubeSize)
+function GetCubeCorners(CubeCFrame, CubeSize)
 	local Half = CubeSize * 0.5
 	local LocalCorners = {
 		Vector3.new(-Half.X, -Half.Y, -Half.Z),
@@ -6995,7 +6995,7 @@ SetTargetCubeVisible = function(IsVisible)
 	end
 end
 
-local function UpdateTargetCube(CubeCFrame, CubeSize, SurfacePointVector3)
+function UpdateTargetCube(CubeCFrame, CubeSize, SurfacePointVector3)
 	local WorldCorners = GetCubeCorners(CubeCFrame, CubeSize)
 	local ScreenCorners = {}
 	local OnScreenFlags = {}
@@ -7021,7 +7021,7 @@ local function UpdateTargetCube(CubeCFrame, CubeSize, SurfacePointVector3)
 end
 
 
-local function IsGlassVisibilityPart(PartInstance)
+function IsGlassVisibilityPart(PartInstance)
 	if not PartInstance then
 		return false
 	end
@@ -7112,7 +7112,7 @@ function JailbirdVisibilityRuntimeTable.IsCharacterRelatedPart(PartInstance)
 	return false
 end
 
-local function SafeGetPartBooleanProperty(PartInstance, PropertyNameString, DefaultBoolean)
+function SafeGetPartBooleanProperty(PartInstance, PropertyNameString, DefaultBoolean)
 	if not PartInstance or type(PropertyNameString) ~= "string" then
 		return DefaultBoolean == true
 	end
@@ -7161,7 +7161,7 @@ function JailbirdVisibilityRuntimeTable.IsPassThroughPart(PartInstance)
 		or not CanQueryBoolean
 end
 
-local function CloneRaycastParamsWithIgnoredInstances(BaseRaycastParamsObject, ExtraIgnoredInstancesTable)
+function CloneRaycastParamsWithIgnoredInstances(BaseRaycastParamsObject, ExtraIgnoredInstancesTable)
 	local RaycastParamsObject = RaycastParams.new()
 	if BaseRaycastParamsObject then
 		RaycastParamsObject.FilterType = BaseRaycastParamsObject.FilterType
@@ -7195,7 +7195,7 @@ local function CloneRaycastParamsWithIgnoredInstances(BaseRaycastParamsObject, E
 	return RaycastParamsObject
 end
 
-local function GetVisibilityRaycastBaseParams()
+function GetVisibilityRaycastBaseParams()
 	local FrameIdNumber = tonumber(CurrentFrameSequenceNumber) or 0
 	if VisibilityRaycastBaseParamsFrameId == FrameIdNumber and VisibilityRaycastBaseParamsValue then
 		return VisibilityRaycastBaseParamsValue
@@ -7216,7 +7216,7 @@ local function GetVisibilityRaycastBaseParams()
 	return VisibilityRaycastParams
 end
 
-local function DoesSegmentIntersectPartBounds(SegmentStartVector3, SegmentEndVector3, PartInstance)
+function DoesSegmentIntersectPartBounds(SegmentStartVector3, SegmentEndVector3, PartInstance)
 	if not SegmentStartVector3 or not SegmentEndVector3 or not PartInstance then
 		return false
 	end
@@ -7261,7 +7261,7 @@ local function DoesSegmentIntersectPartBounds(SegmentStartVector3, SegmentEndVec
 	return MaximumTimeNumber >= 0 and MinimumTimeNumber <= 1
 end
 
-local function IsTargetPointBlockedByMetalShield(TargetPositionVector3, CharacterModel)
+function IsTargetPointBlockedByMetalShield(TargetPositionVector3, CharacterModel)
 	if not IsBloodZonePlaceBoolean or not TargetPositionVector3 or not CharacterModel then
 		return false
 	end
@@ -7492,7 +7492,7 @@ function ComputeCharacterAlive(CharacterModel)
 	return false
 end
 
-local function IsCharacterAlive(CharacterModel)
+function IsCharacterAlive(CharacterModel)
 	if not CharacterModel then
 		return false
 	end
@@ -7906,7 +7906,7 @@ EspRuntimeTable.Update = function(self, LocalCharacterModel, TeamCheckEnabledBoo
 	end
 end
 
-local function GetProjectileArcVisibleTargetData(PartInstance, CharacterModel)
+function GetProjectileArcVisibleTargetData(PartInstance, CharacterModel)
 	local WeaponBallisticsProfileTable = CurrentWeaponBallisticsProfileTable
 	if not ShouldUseProjectileArcVisibilityProfile(WeaponBallisticsProfileTable) then
 		return nil
