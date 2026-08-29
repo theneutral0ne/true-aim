@@ -201,28 +201,105 @@ EspRuntimeTable = {
 	entryCacheKey = nil,
 	entryCacheTime = 0,
 	entryCacheDuration = 0.12,
+	rigCacheDuration = 0.35,
 	defaultColor = Color3.fromRGB(120, 245, 150),
 	priorityColor = Color3.fromRGB(255, 175, 90),
 	whitelistColor = Color3.fromRGB(95, 215, 255),
 	targetColor = Color3.fromRGB(255, 220, 90),
 	infoColor = Color3.fromRGB(240, 240, 240),
-	boxThickness = 1.5,
-	skeletonThickness = 1,
-	skeletonConnections = {
-		{ { "Head" }, { "UpperTorso", "Torso", "Center", "HitboxPart" } },
-		{ { "UpperTorso", "Torso", "Center", "HitboxPart" }, { "LowerTorso", "HumanoidRootPart", "Torso", "Center" } },
-		{ { "UpperTorso", "Torso", "Center", "HitboxPart" }, { "LeftUpperArm", "Left Arm" } },
-		{ { "LeftUpperArm", "Left Arm" }, { "LeftLowerArm" } },
-		{ { "LeftLowerArm", "Left Arm" }, { "LeftHand" } },
-		{ { "UpperTorso", "Torso", "Center", "HitboxPart" }, { "RightUpperArm", "Right Arm" } },
-		{ { "RightUpperArm", "Right Arm" }, { "RightLowerArm" } },
-		{ { "RightLowerArm", "Right Arm" }, { "RightHand" } },
-		{ { "LowerTorso", "HumanoidRootPart", "Torso", "Center" }, { "LeftUpperLeg", "Left Leg" } },
-		{ { "LeftUpperLeg", "Left Leg" }, { "LeftLowerLeg" } },
-		{ { "LeftLowerLeg", "Left Leg" }, { "LeftFoot" } },
-		{ { "LowerTorso", "HumanoidRootPart", "Torso", "Center" }, { "RightUpperLeg", "Right Leg" } },
-		{ { "RightUpperLeg", "Right Leg" }, { "RightLowerLeg" } },
-		{ { "RightLowerLeg", "Right Leg" }, { "RightFoot" } },
+	skeletonThickness = 1.2,
+	maxSkeletonLineCount = 14,
+	offscreenCullMargin = 140,
+	rigProfiles = {
+		R15 = {
+			pointDefinitions = {
+				{ key = "head", names = { "Head" }, offset = Vector3.new(0, 0.15, 0) },
+				{ key = "neck", names = { "UpperTorso", "Torso", "Center", "HitboxPart" }, offset = Vector3.new(0, 0.5, 0) },
+				{ key = "pelvis", names = { "LowerTorso", "HumanoidRootPart", "Torso", "Center" }, offset = Vector3.new(0, -0.15, 0) },
+				{ key = "leftShoulder", names = { "LeftUpperArm", "Left Arm" }, offset = Vector3.new(0, 0.45, 0) },
+				{ key = "leftElbow", names = { "LeftLowerArm", "LeftUpperArm", "Left Arm" }, offset = Vector3.new(0, 0.45, 0) },
+				{ key = "leftHand", names = { "LeftHand", "LeftLowerArm", "Left Arm" }, offset = Vector3.new(0, -0.35, 0) },
+				{ key = "rightShoulder", names = { "RightUpperArm", "Right Arm" }, offset = Vector3.new(0, 0.45, 0) },
+				{ key = "rightElbow", names = { "RightLowerArm", "RightUpperArm", "Right Arm" }, offset = Vector3.new(0, 0.45, 0) },
+				{ key = "rightHand", names = { "RightHand", "RightLowerArm", "Right Arm" }, offset = Vector3.new(0, -0.35, 0) },
+				{ key = "leftHip", names = { "LeftUpperLeg", "Left Leg" }, offset = Vector3.new(0, 0.45, 0) },
+				{ key = "leftKnee", names = { "LeftLowerLeg", "LeftUpperLeg", "Left Leg" }, offset = Vector3.new(0, 0.45, 0) },
+				{ key = "leftFoot", names = { "LeftFoot", "LeftLowerLeg", "Left Leg" }, offset = Vector3.new(0, -0.35, 0) },
+				{ key = "rightHip", names = { "RightUpperLeg", "Right Leg" }, offset = Vector3.new(0, 0.45, 0) },
+				{ key = "rightKnee", names = { "RightLowerLeg", "RightUpperLeg", "Right Leg" }, offset = Vector3.new(0, 0.45, 0) },
+				{ key = "rightFoot", names = { "RightFoot", "RightLowerLeg", "Right Leg" }, offset = Vector3.new(0, -0.35, 0) },
+			},
+			connections = {
+				{ "head", "neck" },
+				{ "neck", "pelvis" },
+				{ "neck", "leftShoulder" },
+				{ "leftShoulder", "leftElbow" },
+				{ "leftElbow", "leftHand" },
+				{ "neck", "rightShoulder" },
+				{ "rightShoulder", "rightElbow" },
+				{ "rightElbow", "rightHand" },
+				{ "pelvis", "leftHip" },
+				{ "leftHip", "leftKnee" },
+				{ "leftKnee", "leftFoot" },
+				{ "pelvis", "rightHip" },
+				{ "rightHip", "rightKnee" },
+				{ "rightKnee", "rightFoot" },
+			},
+		},
+		R6 = {
+			pointDefinitions = {
+				{ key = "head", names = { "Head" }, offset = Vector3.new(0, 0.15, 0) },
+				{ key = "neck", names = { "Torso", "UpperTorso", "Center", "HitboxPart" }, offset = Vector3.new(0, 0.5, 0) },
+				{ key = "pelvis", names = { "Torso", "HumanoidRootPart", "Center" }, offset = Vector3.new(0, -0.45, 0) },
+				{ key = "leftShoulder", names = { "Left Arm", "LeftUpperArm" }, offset = Vector3.new(0, 0.45, 0) },
+				{ key = "leftHand", names = { "Left Arm", "LeftUpperArm" }, offset = Vector3.new(0, -0.45, 0) },
+				{ key = "rightShoulder", names = { "Right Arm", "RightUpperArm" }, offset = Vector3.new(0, 0.45, 0) },
+				{ key = "rightHand", names = { "Right Arm", "RightUpperArm" }, offset = Vector3.new(0, -0.45, 0) },
+				{ key = "leftHip", names = { "Left Leg", "LeftUpperLeg" }, offset = Vector3.new(0, 0.45, 0) },
+				{ key = "leftFoot", names = { "Left Leg", "LeftUpperLeg" }, offset = Vector3.new(0, -0.45, 0) },
+				{ key = "rightHip", names = { "Right Leg", "RightUpperLeg" }, offset = Vector3.new(0, 0.45, 0) },
+				{ key = "rightFoot", names = { "Right Leg", "RightUpperLeg" }, offset = Vector3.new(0, -0.45, 0) },
+			},
+			connections = {
+				{ "head", "neck" },
+				{ "neck", "pelvis" },
+				{ "neck", "leftShoulder" },
+				{ "leftShoulder", "leftHand" },
+				{ "neck", "rightShoulder" },
+				{ "rightShoulder", "rightHand" },
+				{ "pelvis", "leftHip" },
+				{ "leftHip", "leftFoot" },
+				{ "pelvis", "rightHip" },
+				{ "rightHip", "rightFoot" },
+			},
+		},
+		Fallback = {
+			pointDefinitions = {
+				{ key = "head", names = { "Head" }, offset = Vector3.new(0, 0.15, 0) },
+				{ key = "neck", names = { "UpperTorso", "Torso", "Center", "HitboxPart", "HumanoidRootPart" }, offset = Vector3.new(0, 0.45, 0) },
+				{ key = "pelvis", names = { "HumanoidRootPart", "LowerTorso", "Torso", "Center" }, offset = Vector3.new(0, -0.25, 0) },
+				{ key = "leftShoulder", names = { "LeftUpperArm", "Left Arm" }, offset = Vector3.new(0, 0.45, 0) },
+				{ key = "leftHand", names = { "LeftUpperArm", "Left Arm" }, offset = Vector3.new(0, -0.45, 0) },
+				{ key = "rightShoulder", names = { "RightUpperArm", "Right Arm" }, offset = Vector3.new(0, 0.45, 0) },
+				{ key = "rightHand", names = { "RightUpperArm", "Right Arm" }, offset = Vector3.new(0, -0.45, 0) },
+				{ key = "leftHip", names = { "LeftUpperLeg", "Left Leg" }, offset = Vector3.new(0, 0.45, 0) },
+				{ key = "leftFoot", names = { "LeftUpperLeg", "Left Leg" }, offset = Vector3.new(0, -0.45, 0) },
+				{ key = "rightHip", names = { "RightUpperLeg", "Right Leg" }, offset = Vector3.new(0, 0.45, 0) },
+				{ key = "rightFoot", names = { "RightUpperLeg", "Right Leg" }, offset = Vector3.new(0, -0.45, 0) },
+			},
+			connections = {
+				{ "head", "neck" },
+				{ "neck", "pelvis" },
+				{ "neck", "leftShoulder" },
+				{ "leftShoulder", "leftHand" },
+				{ "neck", "rightShoulder" },
+				{ "rightShoulder", "rightHand" },
+				{ "pelvis", "leftHip" },
+				{ "leftHip", "leftFoot" },
+				{ "pelvis", "rightHip" },
+				{ "rightHip", "rightFoot" },
+			},
+		},
 	},
 }
 PlayerListEntryStateCacheDurationNumber = CurrentGameIntegrationPlayerListEntryCacheDurationNumber
@@ -6488,7 +6565,11 @@ local function MakeFrameDraggable(FrameInstance, DragHandleInstance)
 end
 
 UserInputService.InputChanged.Connect(UserInputService.InputChanged, function(InputObject)
-	if UiInteractionRuntimeTable.draggingFrame and UiInteractionRuntimeTable.dragEnabled and InputObject.UserInputType == Enum.UserInputType.MouseMovement then
+	if UiInteractionRuntimeTable.draggingFrame
+		and UiInteractionRuntimeTable.dragEnabled
+		and UiInteractionRuntimeTable.dragStartInputPosition
+		and UiInteractionRuntimeTable.startFramePosition
+		and InputObject.UserInputType == Enum.UserInputType.MouseMovement then
 		local DeltaVector2 = InputObject.Position - UiInteractionRuntimeTable.dragStartInputPosition
 		UiInteractionRuntimeTable.draggingFrame.Position = UDim2.new(
 			UiInteractionRuntimeTable.startFramePosition.X.Scale,
@@ -6496,9 +6577,6 @@ UserInputService.InputChanged.Connect(UserInputService.InputChanged, function(In
 			UiInteractionRuntimeTable.startFramePosition.Y.Scale,
 			UiInteractionRuntimeTable.startFramePosition.Y.Offset + DeltaVector2.Y
 		)
-		if UiInteractionRuntimeTable.draggingFrame == MenuFrame then
-			StoreMenuOpenPosition(UiInteractionRuntimeTable.draggingFrame.Position, true)
-		end
 	end
 end)
 
@@ -6508,6 +6586,8 @@ UserInputService.InputEnded.Connect(UserInputService.InputEnded, function(InputO
 			StoreMenuOpenPosition(MenuFrame.Position, true)
 		end
 		UiInteractionRuntimeTable.draggingFrame = nil
+		UiInteractionRuntimeTable.dragStartInputPosition = nil
+		UiInteractionRuntimeTable.startFramePosition = nil
 	end
 end)
 
@@ -6708,7 +6788,7 @@ local MenuClosedPosition = UDim2.new(MenuOpenPosition.X.Scale, MenuOpenPosition.
 local MenuTweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local MenuHasCustomPositionBoolean = false
 
-local function RoundAbsoluteUdim2Position(PositionUdim2)
+function RoundAbsoluteUdim2Position(PositionUdim2)
 	if typeof(PositionUdim2) ~= "UDim2" then
 		return UDim2.new(0, 0, 0, 0)
 	end
@@ -6721,7 +6801,7 @@ local function RoundAbsoluteUdim2Position(PositionUdim2)
 	)
 end
 
-local function BuildMenuClosedPositionFromOpenPosition(OpenPositionUdim2)
+function BuildMenuClosedPositionFromOpenPosition(OpenPositionUdim2)
 	local RoundedOpenPosition = RoundAbsoluteUdim2Position(OpenPositionUdim2)
 	return UDim2.new(
 		0,
@@ -6731,7 +6811,7 @@ local function BuildMenuClosedPositionFromOpenPosition(OpenPositionUdim2)
 	)
 end
 
-local function ClampMenuOpenPositionToViewport(OpenPositionUdim2, ViewportWidthNumber, ViewportHeightNumber, MenuWidthScaledNumber, MenuHeightScaledNumber, MarginNumber)
+function ClampMenuOpenPositionToViewport(OpenPositionUdim2, ViewportWidthNumber, ViewportHeightNumber, MenuWidthScaledNumber, MenuHeightScaledNumber, MarginNumber)
 	local RoundedOpenPosition = RoundAbsoluteUdim2Position(OpenPositionUdim2)
 	local MaximumXOffsetNumber = math.max(MarginNumber, ViewportWidthNumber - MenuWidthScaledNumber - MarginNumber)
 	local MaximumYOffsetNumber = math.max(MarginNumber, ViewportHeightNumber - MenuHeightScaledNumber - MarginNumber)
@@ -6743,7 +6823,7 @@ local function ClampMenuOpenPositionToViewport(OpenPositionUdim2, ViewportWidthN
 	)
 end
 
-local function StoreMenuOpenPosition(OpenPositionUdim2, HasCustomPositionBoolean)
+function StoreMenuOpenPosition(OpenPositionUdim2, HasCustomPositionBoolean)
 	MenuOpenPosition = RoundAbsoluteUdim2Position(OpenPositionUdim2)
 	MenuClosedPosition = BuildMenuClosedPositionFromOpenPosition(MenuOpenPosition)
 	if HasCustomPositionBoolean ~= nil then
@@ -6911,7 +6991,7 @@ end
 MenuFrame.Position = MenuOpenPosition
 MenuFrame.Visible = true
 
-local function SetMenuOpen(OpenBoolean)
+function SetMenuOpen(OpenBoolean)
 	if MenuIsOpenBoolean == OpenBoolean then
 		return
 	end
@@ -7564,6 +7644,21 @@ EspRuntimeTable.ResolvePartFromNames = function(self, CharacterModel, PartNamesT
 	return nil
 end
 
+EspRuntimeTable.ResolveRigProfile = function(self, CharacterModel)
+	local Humanoid = GetCharacterHumanoid(CharacterModel)
+	if Humanoid and Humanoid.RigType == Enum.HumanoidRigType.R6 then
+		return self.rigProfiles.R6
+	end
+	if CharacterModel
+		and (
+			CharacterModel.FindFirstChild(CharacterModel, "UpperTorso")
+			or CharacterModel.FindFirstChild(CharacterModel, "LowerTorso")
+		) then
+		return self.rigProfiles.R15
+	end
+	return self.rigProfiles.Fallback
+end
+
 EspRuntimeTable.GetAccentColor = function(self, PlayerObject, CharacterModel)
 	if CharacterModel and CurrentTargetCharacterModel == CharacterModel then
 		return self.targetColor
@@ -7593,26 +7688,6 @@ EspRuntimeTable.GetDisplayName = function(self, PlayerObject, CharacterModel)
 	return GetCharacterIdentityString(CharacterModel) or "Unknown"
 end
 
-EspRuntimeTable.GetBoundingBox = function(self, CharacterModel)
-	if not CharacterModel or not CharacterModel.Parent then
-		return nil, nil
-	end
-	local SuccessBoolean, BoxCFrame, BoxSize = pcall(function()
-		return CharacterModel.GetBoundingBox(CharacterModel)
-	end)
-	if SuccessBoolean and typeof(BoxCFrame) == "CFrame" and typeof(BoxSize) == "Vector3" then
-		return BoxCFrame, BoxSize
-	end
-	local FallbackPartInstance = GetCharacterRootPart(CharacterModel)
-		or GetCharacterTorsoLikePart(CharacterModel)
-		or GetCharacterHeadPart(CharacterModel)
-		or GetPreferredTargetPart(CharacterModel)
-	if FallbackPartInstance then
-		return FallbackPartInstance.CFrame, FallbackPartInstance.Size
-	end
-	return nil, nil
-end
-
 EspRuntimeTable.GetHealthInfo = function(self, CharacterModel)
 	local Humanoid = GetCharacterHumanoid(CharacterModel)
 	if not Humanoid then
@@ -7632,18 +7707,17 @@ EspRuntimeTable.GetOrCreateDrawings = function(self, CharacterModel)
 		return DrawingSet
 	end
 	DrawingSet = {
-		boxLines = {},
 		skeletonLines = {},
 		nameText = self:CreateText(13),
 		infoText = self:CreateText(12),
 		healthBarOutline = self:CreateSquare(false),
 		healthBarFill = self:CreateSquare(true),
+		projectedPoints = {},
+		projectedVisibleFlags = {},
+		rigCache = nil,
 		lastSeenFrame = 0,
 	}
-	for LineIndex = 1, #TargetCubeEdgePairsTable do
-		DrawingSet.boxLines[LineIndex] = self:CreateLine(self.boxThickness)
-	end
-	for LineIndex = 1, #self.skeletonConnections do
+	for LineIndex = 1, self.maxSkeletonLineCount do
 		DrawingSet.skeletonLines[LineIndex] = self:CreateLine(self.skeletonThickness)
 	end
 	self.drawingsByCharacter[CharacterModel] = DrawingSet
@@ -7653,9 +7727,6 @@ end
 EspRuntimeTable.HideDrawingSet = function(self, DrawingSet)
 	if not DrawingSet then
 		return
-	end
-	for _, Line in ipairs(DrawingSet.boxLines or {}) do
-		Line.Visible = false
 	end
 	for _, Line in ipairs(DrawingSet.skeletonLines or {}) do
 		Line.Visible = false
@@ -7693,9 +7764,6 @@ EspRuntimeTable.RemoveCharacterDrawings = function(self, CharacterModel)
 	if not DrawingSet then
 		return
 	end
-	for _, DrawingObject in ipairs(DrawingSet.boxLines or {}) do
-		self:RemoveDrawingObject(DrawingObject)
-	end
 	for _, DrawingObject in ipairs(DrawingSet.skeletonLines or {}) do
 		self:RemoveDrawingObject(DrawingObject)
 	end
@@ -7713,6 +7781,7 @@ EspRuntimeTable.GetCharacterEntries = function(self, LocalCharacterModel, TeamCh
 		and (NowNumber - self.entryCacheTime) < self.entryCacheDuration then
 		return self.entryCacheTable
 	end
+
 	local CharacterEntries = {}
 	local SeenCharacterModels = {}
 
@@ -7756,99 +7825,128 @@ EspRuntimeTable.GetCharacterEntries = function(self, LocalCharacterModel, TeamCh
 	return CharacterEntries
 end
 
-EspRuntimeTable.UpdateSkeleton = function(self, DrawingSet, CharacterModel, AccentColor3)
-	for ConnectionIndex, ConnectionTable in ipairs(self.skeletonConnections) do
-		local Line = DrawingSet.skeletonLines[ConnectionIndex]
-		if not EspSkeletonEnabledBoolean then
-			Line.Visible = false
-			continue
-		end
-		local StartPartInstance = self:ResolvePartFromNames(CharacterModel, ConnectionTable[1])
-		local EndPartInstance = self:ResolvePartFromNames(CharacterModel, ConnectionTable[2])
-		if not StartPartInstance or not EndPartInstance or StartPartInstance == EndPartInstance then
-			Line.Visible = false
-			continue
-		end
-		local StartScreenPoint, StartOnScreenBoolean = Camera:WorldToViewportPoint(StartPartInstance.Position)
-		local EndScreenPoint, EndOnScreenBoolean = Camera:WorldToViewportPoint(EndPartInstance.Position)
-		if StartOnScreenBoolean and EndOnScreenBoolean and StartScreenPoint.Z > 0 and EndScreenPoint.Z > 0 then
-			Line.From = Vector2.new(StartScreenPoint.X, StartScreenPoint.Y)
-			Line.To = Vector2.new(EndScreenPoint.X, EndScreenPoint.Y)
-			Line.Color = AccentColor3
-			Line.Visible = true
-		else
-			Line.Visible = false
-		end
+EspRuntimeTable.GetRigParts = function(self, DrawingSet, CharacterModel)
+	local ProfileTable = self:ResolveRigProfile(CharacterModel)
+	local ChildCountNumber = #CharacterModel.GetChildren(CharacterModel)
+	local NowNumber = tick()
+	local RigCacheTable = DrawingSet.rigCache
+	if RigCacheTable
+		and RigCacheTable.profile == ProfileTable
+		and RigCacheTable.childCount == ChildCountNumber
+		and (NowNumber - RigCacheTable.time) < self.rigCacheDuration then
+		return ProfileTable, RigCacheTable.parts
 	end
+
+	local PartsTable = {}
+	for _, PointDefinitionTable in ipairs(ProfileTable.pointDefinitions) do
+		PartsTable[PointDefinitionTable.key] = self:ResolvePartFromNames(CharacterModel, PointDefinitionTable.names)
+	end
+
+	DrawingSet.rigCache = {
+		profile = ProfileTable,
+		parts = PartsTable,
+		childCount = ChildCountNumber,
+		time = NowNumber,
+	}
+	return ProfileTable, PartsTable
 end
 
-EspRuntimeTable.UpdateCharacter = function(self, CharacterModel, PlayerObject)
-	local DrawingSet = self:GetOrCreateDrawings(CharacterModel)
-	local BoxCFrame, BoxSize = self:GetBoundingBox(CharacterModel)
-	if not BoxCFrame or not BoxSize then
-		self:HideDrawingSet(DrawingSet)
-		return false
-	end
+EspRuntimeTable.ProjectRigPoints = function(self, DrawingSet, ProfileTable, PartsTable)
+	local ProjectedPointsTable = ClearMutableTable(DrawingSet.projectedPoints or {})
+	local VisibleFlagsTable = ClearMutableTable(DrawingSet.projectedVisibleFlags or {})
+	DrawingSet.projectedPoints = ProjectedPointsTable
+	DrawingSet.projectedVisibleFlags = VisibleFlagsTable
 
-	local WorldCorners = GetCubeCorners(BoxCFrame, BoxSize)
-	local ScreenCorners = {}
+	local AnyOnScreenBoolean = false
 	local MinXNumber = math.huge
 	local MinYNumber = math.huge
 	local MaxXNumber = -math.huge
 	local MaxYNumber = -math.huge
-	local AnyOnScreenBoolean = false
 
-	for CornerIndex, CornerVector3 in ipairs(WorldCorners) do
-		local ScreenPoint, OnScreenBoolean = Camera:WorldToViewportPoint(CornerVector3)
-		if ScreenPoint.Z > 0 then
-			local ScreenCornerVector2 = Vector2.new(ScreenPoint.X, ScreenPoint.Y)
-			ScreenCorners[CornerIndex] = ScreenCornerVector2
-			MinXNumber = math.min(MinXNumber, ScreenCornerVector2.X)
-			MinYNumber = math.min(MinYNumber, ScreenCornerVector2.Y)
-			MaxXNumber = math.max(MaxXNumber, ScreenCornerVector2.X)
-			MaxYNumber = math.max(MaxYNumber, ScreenCornerVector2.Y)
-			if OnScreenBoolean then
-				AnyOnScreenBoolean = true
+	for _, PointDefinitionTable in ipairs(ProfileTable.pointDefinitions) do
+		local PartInstance = PartsTable[PointDefinitionTable.key]
+		if PartInstance and PartInstance.Parent then
+			local WorldPointVector3 = PartInstance.Position
+			if typeof(PointDefinitionTable.offset) == "Vector3" then
+				local PartSizeVector3 = PartInstance.Size
+				local OffsetVector3 = PointDefinitionTable.offset
+				WorldPointVector3 = PartInstance.CFrame * Vector3.new(
+					PartSizeVector3.X * OffsetVector3.X,
+					PartSizeVector3.Y * OffsetVector3.Y,
+					PartSizeVector3.Z * OffsetVector3.Z
+				)
+			end
+			local ScreenPointVector3, OnScreenBoolean = Camera.WorldToViewportPoint(Camera, WorldPointVector3)
+			if ScreenPointVector3.Z > 0 then
+				local ScreenPointVector2 = Vector2.new(ScreenPointVector3.X, ScreenPointVector3.Y)
+				ProjectedPointsTable[PointDefinitionTable.key] = ScreenPointVector2
+				VisibleFlagsTable[PointDefinitionTable.key] = OnScreenBoolean
+				if OnScreenBoolean then
+					AnyOnScreenBoolean = true
+					MinXNumber = math.min(MinXNumber, ScreenPointVector2.X)
+					MinYNumber = math.min(MinYNumber, ScreenPointVector2.Y)
+					MaxXNumber = math.max(MaxXNumber, ScreenPointVector2.X)
+					MaxYNumber = math.max(MaxYNumber, ScreenPointVector2.Y)
+				end
 			end
 		end
 	end
 
-	local AnchorPartInstance = GetCharacterHeadPart(CharacterModel)
-		or GetCharacterRootPart(CharacterModel)
-		or GetPreferredTargetPart(CharacterModel)
-	if not AnyOnScreenBoolean and AnchorPartInstance then
-		local AnchorScreenPoint, AnchorOnScreenBoolean = Camera:WorldToViewportPoint(AnchorPartInstance.Position)
-		AnyOnScreenBoolean = AnchorOnScreenBoolean and AnchorScreenPoint.Z > 0
-	end
-	if not AnyOnScreenBoolean or MinXNumber == math.huge or MinYNumber == math.huge then
-		self:HideDrawingSet(DrawingSet)
-		return false
-	end
+	return ProjectedPointsTable, VisibleFlagsTable, AnyOnScreenBoolean, MinXNumber, MinYNumber, MaxXNumber, MaxYNumber
+end
 
-	local DistanceOriginVector3 = CurrentVisibilityOriginVector3 or Camera.CFrame.Position
-	local DistanceNumber = AnchorPartInstance and (AnchorPartInstance.Position - DistanceOriginVector3).Magnitude or 0
-	if DistanceNumber > MaxDistanceNumber then
-		self:HideDrawingSet(DrawingSet)
-		return false
-	end
-
-	local AccentColor3 = self:GetAccentColor(PlayerObject, CharacterModel)
-	for LineIndex, PairTable in ipairs(TargetCubeEdgePairsTable) do
-		local StartCornerVector2 = ScreenCorners[PairTable[1]]
-		local EndCornerVector2 = ScreenCorners[PairTable[2]]
-		local Line = DrawingSet.boxLines[LineIndex]
-		if StartCornerVector2 and EndCornerVector2 then
-			Line.From = StartCornerVector2
-			Line.To = EndCornerVector2
-			Line.Color = AccentColor3
-			Line.Visible = true
-		else
+EspRuntimeTable.UpdateSkeleton = function(self, DrawingSet, ProfileTable, ProjectedPointsTable, VisibleFlagsTable, AccentColor3)
+	for LineIndex = 1, self.maxSkeletonLineCount do
+		local Line = DrawingSet.skeletonLines[LineIndex]
+		local ConnectionTable = ProfileTable.connections[LineIndex]
+		if not EspSkeletonEnabledBoolean or not ConnectionTable then
 			Line.Visible = false
+			continue
 		end
+
+		local StartPointVector2 = ProjectedPointsTable[ConnectionTable[1]]
+		local EndPointVector2 = ProjectedPointsTable[ConnectionTable[2]]
+		local StartVisibleBoolean = VisibleFlagsTable[ConnectionTable[1]] == true
+		local EndVisibleBoolean = VisibleFlagsTable[ConnectionTable[2]] == true
+		if not StartPointVector2 or not EndPointVector2 or not (StartVisibleBoolean or EndVisibleBoolean) then
+			Line.Visible = false
+			continue
+		end
+
+		Line.From = StartPointVector2
+		Line.To = EndPointVector2
+		Line.Color = AccentColor3
+		Line.Visible = true
+	end
+end
+
+EspRuntimeTable.UpdateOverlay = function(self, DrawingSet, CharacterModel, PlayerObject, ProjectedPointsTable, VisibleFlagsTable, MinXNumber, MinYNumber, MaxXNumber, MaxYNumber, DistanceNumber, AccentColor3)
+	local HealthNumber, MaxHealthNumber, HealthRatioNumber = self:GetHealthInfo(CharacterModel)
+	local HeaderPointVector2 = ProjectedPointsTable.head
+		or ProjectedPointsTable.neck
+		or ProjectedPointsTable.torso
+		or ProjectedPointsTable.pelvis
+	local HeaderVisibleBoolean = VisibleFlagsTable.head == true
+		or VisibleFlagsTable.neck == true
+		or VisibleFlagsTable.torso == true
+		or VisibleFlagsTable.pelvis == true
+	local CenterXNumber = HeaderPointVector2 and HeaderPointVector2.X or ((MinXNumber + MaxXNumber) * 0.5)
+	local NameYNumber = HeaderPointVector2 and (HeaderPointVector2.Y - 18) or (MinYNumber - 16)
+	if not HeaderVisibleBoolean then
+		NameYNumber = MinYNumber - 16
 	end
 
-	local HealthNumber, MaxHealthNumber, HealthRatioNumber = self:GetHealthInfo(CharacterModel)
-	local HealthBarHeightNumber = math.max(4, math.floor(MaxYNumber - MinYNumber + 0.5))
+	DrawingSet.nameText.Text = self:GetDisplayName(PlayerObject, CharacterModel)
+	DrawingSet.nameText.Position = Vector2.new(math.floor(CenterXNumber + 0.5), math.floor(NameYNumber + 0.5))
+	DrawingSet.nameText.Color = AccentColor3
+	DrawingSet.nameText.Visible = true
+
+	DrawingSet.infoText.Text = tostring(math.floor(DistanceNumber + 0.5)) .. " studs | " .. tostring(math.floor(HealthNumber + 0.5)) .. "/" .. tostring(math.floor(MaxHealthNumber + 0.5)) .. " HP"
+	DrawingSet.infoText.Position = Vector2.new(math.floor(((MinXNumber + MaxXNumber) * 0.5) + 0.5), math.floor(MaxYNumber + 4 + 0.5))
+	DrawingSet.infoText.Color = self.infoColor
+	DrawingSet.infoText.Visible = true
+
+	local HealthBarHeightNumber = math.max(8, math.floor(MaxYNumber - MinYNumber + 0.5))
 	local HealthBarXNumber = math.floor(MinXNumber - 7.5)
 	local HealthBarYNumber = math.floor(MinYNumber + 0.5)
 	local FilledHeightNumber = math.clamp(math.floor(HealthBarHeightNumber * HealthRatioNumber + 0.5), 0, HealthBarHeightNumber)
@@ -7862,18 +7960,51 @@ EspRuntimeTable.UpdateCharacter = function(self, CharacterModel, PlayerObject)
 	DrawingSet.healthBarFill.Size = Vector2.new(2, math.max(0, FilledHeightNumber - 2))
 	DrawingSet.healthBarFill.Color = self:GetHealthColor(HealthRatioNumber)
 	DrawingSet.healthBarFill.Visible = FilledHeightNumber > 1
+end
 
-	DrawingSet.nameText.Text = self:GetDisplayName(PlayerObject, CharacterModel)
-	DrawingSet.nameText.Position = Vector2.new(math.floor(((MinXNumber + MaxXNumber) * 0.5) + 0.5), math.floor(MinYNumber - 16 + 0.5))
-	DrawingSet.nameText.Color = AccentColor3
-	DrawingSet.nameText.Visible = true
+EspRuntimeTable.UpdateCharacter = function(self, CharacterModel, PlayerObject)
+	local DrawingSet = self:GetOrCreateDrawings(CharacterModel)
+	local AnchorPartInstance = GetCharacterRootPart(CharacterModel)
+		or GetCharacterTorsoLikePart(CharacterModel)
+		or GetCharacterHeadPart(CharacterModel)
+	if not AnchorPartInstance or not AnchorPartInstance.Parent then
+		self:HideDrawingSet(DrawingSet)
+		return false
+	end
 
-	DrawingSet.infoText.Text = tostring(math.floor(DistanceNumber + 0.5)) .. " studs | " .. tostring(math.floor(HealthNumber + 0.5)) .. "/" .. tostring(math.floor(MaxHealthNumber + 0.5)) .. " HP"
-	DrawingSet.infoText.Position = Vector2.new(math.floor(((MinXNumber + MaxXNumber) * 0.5) + 0.5), math.floor(MaxYNumber + 3 + 0.5))
-	DrawingSet.infoText.Color = self.infoColor
-	DrawingSet.infoText.Visible = true
+	local DistanceOriginVector3 = CurrentVisibilityOriginVector3 or Camera.CFrame.Position
+	local DistanceNumber = (AnchorPartInstance.Position - DistanceOriginVector3).Magnitude
+	if DistanceNumber > MaxDistanceNumber then
+		self:HideDrawingSet(DrawingSet)
+		return false
+	end
+	local AnchorScreenPointVector3, AnchorOnScreenBoolean = Camera.WorldToViewportPoint(Camera, AnchorPartInstance.Position)
+	if AnchorScreenPointVector3.Z <= 0 then
+		self:HideDrawingSet(DrawingSet)
+		return false
+	end
+	if not AnchorOnScreenBoolean then
+		local ViewportSizeVector2 = Camera.ViewportSize
+		local CullMarginNumber = self.offscreenCullMargin or 140
+		if AnchorScreenPointVector3.X < -CullMarginNumber
+			or AnchorScreenPointVector3.X > (ViewportSizeVector2.X + CullMarginNumber)
+			or AnchorScreenPointVector3.Y < -CullMarginNumber
+			or AnchorScreenPointVector3.Y > (ViewportSizeVector2.Y + CullMarginNumber) then
+			self:HideDrawingSet(DrawingSet)
+			return false
+		end
+	end
 
-	self:UpdateSkeleton(DrawingSet, CharacterModel, AccentColor3)
+	local ProfileTable, PartsTable = self:GetRigParts(DrawingSet, CharacterModel)
+	local ProjectedPointsTable, VisibleFlagsTable, AnyOnScreenBoolean, MinXNumber, MinYNumber, MaxXNumber, MaxYNumber = self:ProjectRigPoints(DrawingSet, ProfileTable, PartsTable)
+	if not AnyOnScreenBoolean or MinXNumber == math.huge or MinYNumber == math.huge then
+		self:HideDrawingSet(DrawingSet)
+		return false
+	end
+
+	local AccentColor3 = self:GetAccentColor(PlayerObject, CharacterModel)
+	self:UpdateSkeleton(DrawingSet, ProfileTable, ProjectedPointsTable, VisibleFlagsTable, AccentColor3)
+	self:UpdateOverlay(DrawingSet, CharacterModel, PlayerObject, ProjectedPointsTable, VisibleFlagsTable, MinXNumber, MinYNumber, MaxXNumber, MaxYNumber, DistanceNumber, AccentColor3)
 	DrawingSet.lastSeenFrame = CurrentFrameSequenceNumber
 	return true
 end
