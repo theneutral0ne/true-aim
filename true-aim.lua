@@ -1,17 +1,16 @@
-
-local RunService = game.GetService(game, "RunService")
-local Players = game.GetService(game, "Players")
-local WorkspaceService = game.GetService(game, "Workspace")
-local CollectionService = game.GetService(game, "CollectionService")
-local ReplicatedStorageService = game.GetService(game, "ReplicatedStorage")
-local UserInputService = game.GetService(game, "UserInputService")
-local GuiService = game.GetService(game, "GuiService")
-local TweenService = game.GetService(game, "TweenService")
-local VirtualInputManager = game.GetService(game, "VirtualInputManager")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local WorkspaceService = game:GetService("Workspace")
+local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorageService = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
+local TweenService = game:GetService("TweenService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = WorkspaceService.CurrentCamera
-local MouseObject = LocalPlayer.GetMouse(LocalPlayer)
+local MouseObject = LocalPlayer:GetMouse()
 
 FovCircle = Drawing.new("Circle")
 FovCircle.Radius = 300
