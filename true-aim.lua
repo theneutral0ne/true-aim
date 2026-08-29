@@ -508,6 +508,26 @@ function ApplyAimbotUiDecoration(GuiObject, CornerRadiusNumber, StrokeColor3)
 	StrokeObject.Transparency = 0.35
 end
 
+function CreateAimbotSectionSurface(SurfaceNameString, YOffsetNumber, HeightNumber)
+	local SurfaceFrame = Instance.new("Frame")
+	SurfaceFrame.Name = SurfaceNameString
+	SurfaceFrame.Size = UDim2.new(1, -16, 0, HeightNumber)
+	SurfaceFrame.Position = UDim2.new(0, 8, 0, YOffsetNumber)
+	SurfaceFrame.BackgroundColor3 = Color3.fromRGB(18, 25, 35)
+	SurfaceFrame.BackgroundTransparency = 0.2
+	SurfaceFrame.BorderSizePixel = 0
+	SurfaceFrame.ClipsDescendants = true
+	SurfaceFrame.ZIndex = 100
+	SurfaceFrame.Parent = MenuFrame
+	ApplyAimbotUiDecoration(SurfaceFrame, 6, Color3.fromRGB(45, 75, 105))
+
+	local SurfaceStrokeObject = SurfaceFrame.FindFirstChild(SurfaceFrame, "AimbotStroke")
+	if SurfaceStrokeObject then
+		SurfaceStrokeObject.Transparency = 0.72
+	end
+	return SurfaceFrame
+end
+
 ApplyAimbotUiDecoration(MenuFrame, 8, Color3.fromRGB(55, 105, 155))
 ApplyAimbotUiDecoration(PlayerListRuntimeTable.frame, 8, Color3.fromRGB(55, 105, 155))
 ApplyAimbotUiDecoration(DebugFrame, 8, Color3.fromRGB(140, 110, 55))
@@ -5883,6 +5903,11 @@ end
 if SillySkyVisibilityToggleButton then
 	ApplyAimbotUiDecoration(SillySkyVisibilityToggleButton, 5, Color3.fromRGB(70, 115, 155))
 end
+
+CreateAimbotSectionSurface("AimSettingsSurfaceFrame", 44, 100)
+CreateAimbotSectionSurface("TargetingSurfaceFrame", 164, 106)
+CreateAimbotSectionSurface("VisibilitySurfaceFrame", 288, 60)
+CreateAimbotSectionSurface("BehaviorSurfaceFrame", 368, 202)
 
 CreateSectionHeader("Targeting", 150)
 CreateSectionHeader("Visibility", 274)
