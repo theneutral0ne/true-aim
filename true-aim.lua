@@ -7,6 +7,7 @@ local UserInputService = game.GetService(game, "UserInputService")
 local GuiService = game.GetService(game, "GuiService")
 local TweenService = game.GetService(game, "TweenService")
 local VirtualInputManager = game.GetService(game, "VirtualInputManager")
+local HttpService = game.GetService(game, "HttpService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = WorkspaceService.CurrentCamera
@@ -435,6 +436,239 @@ local LauncherBallisticsProfileByNameTable = {
 local function IsSupportedBloodZoneWeaponType(WeaponTypeString)
 	return type(WeaponTypeString) == "string"
 		and SupportedBloodZoneWeaponTypesTable[WeaponTypeString] == true
+end
+
+local SavePersistentStateNow = function()
+	return false
+end
+
+local SchedulePersistentStateSave = function()
+end
+
+local PersistentSettingsRuntimeTable = {
+	version = 1,
+	folderPath = "true-aim",
+	filePath = "true-aim/settings.json",
+	fallbackFilePath = "true-aim-settings.json",
+	activeFilePath = nil,
+	gameKey = CurrentGameIntegrationIdString or ("place_" .. tostring(game.PlaceId or 0)),
+	loadedState = nil,
+	pendingUiState = nil,
+	saveSequence = 0,
+}
+
+local function ClampPersistedNumericSetting(ValueNumber, DefaultNumber, MinimumNumber, MaximumNumber)
+	local ResolvedNumber = tonumber(ValueNumber)
+	if type(ResolvedNumber) ~= "number" then
+		ResolvedNumber = tonumber(DefaultNumber) or 0
+	end
+	if type(MinimumNumber) == "number" or type(MaximumNumber) == "number" then
+		local MinimumClampNumber = type(MinimumNumber) == "number" and MinimumNumber or ResolvedNumber
+		local MaximumClampNumber = type(MaximumNumber) == "number" and MaximumNumber or ResolvedNumber
+		ResolvedNumber = math.clamp(ResolvedNumber, MinimumClampNumber, MaximumClampNumber)
+	end
+	return ResolvedNumber
+end
+
+local function SerializePersistedPosition(PositionUdim2)
+	if typeof(PositionUdim2) ~= "UDim2" then
+		return nil
+	end
+
+	return {
+		x = math.floor((tonumber(PositionUdim2.X.Offset) or 0) + 0.5),
+		y = math.floor((tonumber(PositionUdim2.Y.Offset) or 0) + 0.5),
+	}
+end
+
+local function DeserializePersistedPosition(PositionTable)
+	if type(PositionTable) ~= "table" then
+		return nil
+	end
+
+	local XOffsetNumber = tonumber(PositionTable.x)
+	local YOffsetNumber = tonumber(PositionTable.y)
+	if type(XOffsetNumber) ~= "number" or type(YOffsetNumber) ~= "number" then
+		return nil
+	end
+
+	return UDim2.new(
+		0,
+		math.floor(XOffsetNumber + 0.5),
+		0,
+		math.floor(YOffsetNumber + 0.5)
+	)
+end
+
+local function ResolvePersistentSettingsFilePathForWrite()
+	local ActiveFilePathString = PersistentSettingsRuntimeTable.activeFilePath
+	if type(ActiveFilePathString) == "string" and ActiveFilePathString ~= "" then
+		return ActiveFilePathString
+	end
+
+	if type(makefolder) == "function" and type(isfolder) == "function" then
+		local FolderReadyBoolean = false
+		local FolderCheckSuccessBoolean, FolderCheckValue = pcall(isfolder, PersistentSettingsRuntimeTable.folderPath)
+		FolderReadyBoolean = FolderCheckSuccessBoolean and FolderCheckValue == true
+		if not FolderReadyBoolean then
+			pcall(makefolder, PersistentSettingsRuntimeTable.folderPath)
+		end
+		FolderCheckSuccessBoolean, FolderCheckValue = pcall(isfolder, PersistentSettingsRuntimeTable.folderPath)
+		FolderReadyBoolean = FolderCheckSuccessBoolean and FolderCheckValue == true
+		if FolderReadyBoolean then
+			PersistentSettingsRuntimeTable.activeFilePath = PersistentSettingsRuntimeTable.filePath
+			return PersistentSettingsRuntimeTable.filePath
+		end
+	end
+
+	PersistentSettingsRuntimeTable.activeFilePath = PersistentSettingsRuntimeTable.fallbackFilePath
+	return PersistentSettingsRuntimeTable.fallbackFilePath
+end
+
+local function LoadPersistentSettingsState()
+	if type(readfile) ~= "function" or type(isfile) ~= "function" then
+		return nil
+	end
+
+	for _, CandidateFilePathString in ipairs({
+		PersistentSettingsRuntimeTable.filePath,
+		PersistentSettingsRuntimeTable.fallbackFilePath,
+	}) do
+		local FileExistsSuccessBoolean, FileExistsBoolean = pcall(isfile, CandidateFilePathString)
+		if not FileExistsSuccessBoolean or FileExistsBoolean ~= true then
+			continue
+		end
+
+		local ReadSuccessBoolean, FileContentsString = pcall(readfile, CandidateFilePathString)
+		if not ReadSuccessBoolean or type(FileContentsString) ~= "string" or FileContentsString == "" then
+			continue
+		end
+
+		local DecodeSuccessBoolean, DecodedStateTable = pcall(HttpService.JSONDecode, HttpService, FileContentsString)
+		if DecodeSuccessBoolean and type(DecodedStateTable) == "table" then
+			PersistentSettingsRuntimeTable.activeFilePath = CandidateFilePathString
+			return DecodedStateTable
+		end
+	end
+
+	return nil
+end
+
+local function ApplyLoadedPersistentScalarState(StateTable)
+	if type(StateTable) ~= "table" then
+		return
+	end
+
+	AimbotSmoothingNumber = ClampPersistedNumericSetting(
+		StateTable.smoothing,
+		AimbotSmoothingNumber,
+		MinSmoothingNumber,
+		MaxSmoothingNumber
+	)
+	FovCircle.Radius = ClampPersistedNumericSetting(
+		StateTable.fovRadius,
+		FovCircle.Radius,
+		MinFovRadiusNumber,
+		MaxFovRadiusNumber
+	)
+	NormalHookHitChanceNumber = ClampPersistedNumericSetting(
+		StateTable.hookHitChance,
+		NormalHookHitChanceNumber,
+		MinNormalHookHitChanceNumber,
+		MaxNormalHookHitChanceNumber
+	)
+	LockKeyModeIndexNumber = math.floor(ClampPersistedNumericSetting(
+		StateTable.lockKeyModeIndex,
+		LockKeyModeIndexNumber,
+		1,
+		#LockKeyModesTable
+	))
+
+	if type(StateTable.headshotPriority) == "boolean" then
+		HeadshotPriorityBoolean = StateTable.headshotPriority
+	end
+	if type(StateTable.autoFireEnabled) == "boolean" then
+		AutoFireEnabledBoolean = StateTable.autoFireEnabled
+	end
+	if type(StateTable.visibleCheckEnabled) == "boolean" then
+		VisibleCheckEnabledBoolean = StateTable.visibleCheckEnabled
+	end
+	if type(StateTable.targetSegmentationEnabled) == "boolean" then
+		TargetSegmentationEnabledBoolean = StateTable.targetSegmentationEnabled
+	end
+	if type(StateTable.showFovCircle) == "boolean" then
+		ShowFovCircleBoolean = StateTable.showFovCircle
+	end
+	if type(StateTable.showTargetLine) == "boolean" then
+		ShowTargetLineBoolean = StateTable.showTargetLine
+	end
+	if type(StateTable.useHookMethod) == "boolean" then
+		UseHookMethodBoolean = StateTable.useHookMethod
+	end
+	if type(StateTable.useCameraMethod) == "boolean" then
+		UseCameraMethodBoolean = StateTable.useCameraMethod
+	end
+	if not UseHookMethodBoolean and not UseCameraMethodBoolean then
+		UseHookMethodBoolean = true
+		UseCameraMethodBoolean = true
+	end
+	if type(StateTable.stickyAimEnabled) == "boolean" then
+		StickyAimEnabledBoolean = StateTable.stickyAimEnabled
+	end
+	if type(StateTable.espEnabled) == "boolean" then
+		EspEnabledBoolean = StateTable.espEnabled
+	end
+	if type(StateTable.espSkeletonEnabled) == "boolean" then
+		EspSkeletonEnabledBoolean = StateTable.espSkeletonEnabled
+	end
+	if type(StateTable.espHighlightEnabled) == "boolean" then
+		EspHighlightEnabledBoolean = StateTable.espHighlightEnabled
+	end
+
+	local UiStateTable = type(StateTable.ui) == "table" and StateTable.ui or nil
+	if UiStateTable then
+		if type(UiStateTable.playerListCollapsed) == "boolean" then
+			PlayerListRuntimeTable.collapsed = UiStateTable.playerListCollapsed
+		end
+		PersistentSettingsRuntimeTable.pendingUiState = UiStateTable
+	end
+end
+
+local function ApplyLoadedPersistentGameState(StateTable)
+	if type(StateTable) ~= "table" then
+		return
+	end
+
+	if IsBloodZonePlaceBoolean then
+		if type(StateTable.sillyModeEnabled) == "boolean" then
+			SillyModeEnabledBoolean = StateTable.sillyModeEnabled
+		end
+		if type(StateTable.sillySkyAimEnabled) == "boolean" then
+			SillySkyAimEnabledBoolean = StateTable.sillySkyAimEnabled
+		end
+		if type(StateTable.sillySkyVisibilityCheckEnabled) == "boolean" then
+			SillySkyVisibilityCheckEnabledBoolean = StateTable.sillySkyVisibilityCheckEnabled
+		end
+		if type(StateTable.shieldModeEnabled) == "boolean" then
+			ShieldModeEnabledBoolean = StateTable.shieldModeEnabled
+		end
+	end
+end
+
+local LoadedPersistentSettingsStateTable = LoadPersistentSettingsState()
+PersistentSettingsRuntimeTable.loadedState = type(LoadedPersistentSettingsStateTable) == "table"
+	and LoadedPersistentSettingsStateTable
+	or nil
+if type(LoadedPersistentSettingsStateTable) == "table" then
+	local GlobalStateTable = type(LoadedPersistentSettingsStateTable.global) == "table"
+		and LoadedPersistentSettingsStateTable.global
+		or LoadedPersistentSettingsStateTable
+	ApplyLoadedPersistentScalarState(GlobalStateTable)
+
+	local GameStatesTable = type(LoadedPersistentSettingsStateTable.games) == "table"
+		and LoadedPersistentSettingsStateTable.games
+		or nil
+	ApplyLoadedPersistentGameState(GameStatesTable and GameStatesTable[PersistentSettingsRuntimeTable.gameKey] or nil)
 end
 
 
@@ -6235,6 +6469,7 @@ local function AdvanceLockKeyMode()
 	if LockKeyModeIndexNumber > #LockKeyModesTable then
 		LockKeyModeIndexNumber = 1
 	end
+	SchedulePersistentStateSave()
 	return GetCurrentLockKeyMode()
 end
 
@@ -6385,6 +6620,7 @@ local function ToggleSillyMode()
 	RefreshBloodZoneBehaviorButtons()
 	UpdateDebugStatus("silly mode=" .. tostring(SillyModeEnabledBoolean) .. " sky aim=" .. tostring(SillySkyAimEnabledBoolean))
 	DebugLog("toggle-silly", "Silly Mode set to " .. tostring(SillyModeEnabledBoolean) .. " | sky aim=" .. tostring(SillySkyAimEnabledBoolean), true)
+	SchedulePersistentStateSave()
 end
 
 local SetTargetCubeVisible
@@ -6395,6 +6631,7 @@ HeadshotToggleButton.MouseButton1Click.Connect(HeadshotToggleButton.MouseButton1
 	end
 	HeadshotPriorityBoolean = not HeadshotPriorityBoolean
 	UpdateHeadshotButtonAppearance()
+	SchedulePersistentStateSave()
 end)
 
 AutoFireToggleButton.MouseButton1Click.Connect(AutoFireToggleButton.MouseButton1Click, function()
@@ -6403,6 +6640,7 @@ AutoFireToggleButton.MouseButton1Click.Connect(AutoFireToggleButton.MouseButton1
 	end
 	AutoFireEnabledBoolean = not AutoFireEnabledBoolean
 	UpdateAutoFireButtonAppearance()
+	SchedulePersistentStateSave()
 end)
 
 VisibleCheckToggleButton.MouseButton1Click.Connect(VisibleCheckToggleButton.MouseButton1Click, function()
@@ -6413,6 +6651,7 @@ VisibleCheckToggleButton.MouseButton1Click.Connect(VisibleCheckToggleButton.Mous
 	UpdateVisibleCheckButtonAppearance()
 	UpdateDebugStatus("visible check=" .. tostring(VisibleCheckEnabledBoolean))
 	DebugLog("toggle-visible", "Visible check set to " .. tostring(VisibleCheckEnabledBoolean), true)
+	SchedulePersistentStateSave()
 end)
 
 TargetSegmentationToggleButton.MouseButton1Click.Connect(TargetSegmentationToggleButton.MouseButton1Click, function()
@@ -6432,6 +6671,7 @@ TargetSegmentationToggleButton.MouseButton1Click.Connect(TargetSegmentationToggl
 	end
 	UpdateDebugStatus("sectioning=" .. tostring(TargetSegmentationEnabledBoolean))
 	DebugLog("toggle-segmentation", "Sectioning set to " .. tostring(TargetSegmentationEnabledBoolean), true)
+	SchedulePersistentStateSave()
 end)
 
 FovToggleButton.MouseButton1Click.Connect(FovToggleButton.MouseButton1Click, function()
@@ -6440,6 +6680,7 @@ FovToggleButton.MouseButton1Click.Connect(FovToggleButton.MouseButton1Click, fun
 	end
 	ShowFovCircleBoolean = not ShowFovCircleBoolean
 	UpdateFovToggleButtonAppearance()
+	SchedulePersistentStateSave()
 end)
 
 TargetLineToggleButton.MouseButton1Click.Connect(TargetLineToggleButton.MouseButton1Click, function()
@@ -6452,6 +6693,7 @@ TargetLineToggleButton.MouseButton1Click.Connect(TargetLineToggleButton.MouseBut
 	SetTargetCubeVisible(false)
 	UpdateDebugStatus("target line=" .. tostring(ShowTargetLineBoolean))
 	DebugLog("toggle-line", "Target line set to " .. tostring(ShowTargetLineBoolean), true)
+	SchedulePersistentStateSave()
 end)
 
 LockKeyToggleButton.MouseButton1Click.Connect(LockKeyToggleButton.MouseButton1Click, function()
@@ -6478,6 +6720,7 @@ HookMethodToggleButton.MouseButton1Click.Connect(HookMethodToggleButton.MouseBut
 	end
 	ResetNormalHookHitChanceDecision()
 	UpdateHookMethodButtonAppearance()
+	SchedulePersistentStateSave()
 end)
 
 StickyAimToggleButton.MouseButton1Click.Connect(StickyAimToggleButton.MouseButton1Click, function()
@@ -6495,6 +6738,7 @@ StickyAimToggleButton.MouseButton1Click.Connect(StickyAimToggleButton.MouseButto
 	UpdateStickyAimButtonAppearance()
 	UpdateDebugStatus("sticky aim=" .. tostring(StickyAimEnabledBoolean))
 	DebugLog("toggle-sticky", "Sticky Aim set to " .. tostring(StickyAimEnabledBoolean), true)
+	SchedulePersistentStateSave()
 end)
 
 if SillyModeToggleButton then
@@ -6524,6 +6768,7 @@ if ShieldModeToggleButton then
 		UpdateSillySkyVisibilityButtonAppearance()
 		UpdateDebugStatus("shield mode=" .. tostring(ShieldModeEnabledBoolean))
 		DebugLog("toggle-shield", "Shield Mode set to " .. tostring(ShieldModeEnabledBoolean), true)
+		SchedulePersistentStateSave()
 	end)
 end
 
@@ -6536,6 +6781,7 @@ if SillySkyVisibilityToggleButton then
 		UpdateSillySkyVisibilityButtonAppearance()
 		UpdateDebugStatus("sky vis check=" .. tostring(SillySkyVisibilityCheckEnabledBoolean))
 		DebugLog("toggle-sky-vis", "Silly sky visibility check set to " .. tostring(SillySkyVisibilityCheckEnabledBoolean), true)
+		SchedulePersistentStateSave()
 	end)
 end
 
@@ -6550,6 +6796,7 @@ EspToggleButton.MouseButton1Click.Connect(EspToggleButton.MouseButton1Click, fun
 	if not EspEnabledBoolean then
 		EspRuntimeTable.HideAll(EspRuntimeTable)
 	end
+	SchedulePersistentStateSave()
 end)
 
 EspSkeletonToggleButton.MouseButton1Click.Connect(EspSkeletonToggleButton.MouseButton1Click, function()
@@ -6565,6 +6812,7 @@ EspSkeletonToggleButton.MouseButton1Click.Connect(EspSkeletonToggleButton.MouseB
 	if not EspSkeletonEnabledBoolean then
 		EspRuntimeTable.HideSkeletons(EspRuntimeTable)
 	end
+	SchedulePersistentStateSave()
 end)
 
 EspHighlightToggleButton.MouseButton1Click.Connect(EspHighlightToggleButton.MouseButton1Click, function()
@@ -6580,6 +6828,7 @@ EspHighlightToggleButton.MouseButton1Click.Connect(EspHighlightToggleButton.Mous
 	if not EspHighlightEnabledBoolean then
 		EspRuntimeTable.ClearHighlights(EspRuntimeTable)
 	end
+	SchedulePersistentStateSave()
 end)
 
 UpdateHeadshotButtonAppearance()
@@ -6637,6 +6886,10 @@ UserInputService.InputEnded.Connect(UserInputService.InputEnded, function(InputO
 	if InputObject.UserInputType == Enum.UserInputType.MouseButton1 then
 		if UiInteractionRuntimeTable.draggingFrame == MenuFrame then
 			StoreMenuOpenPosition(MenuFrame.Position, true)
+			SchedulePersistentStateSave()
+		elseif UiInteractionRuntimeTable.draggingFrame == PlayerListRuntimeTable.frame then
+			StorePlayerListOpenPosition(PlayerListRuntimeTable.frame.Position, true)
+			SchedulePersistentStateSave()
 		end
 		UiInteractionRuntimeTable.draggingFrame = nil
 		UiInteractionRuntimeTable.dragStartInputPosition = nil
@@ -6818,6 +7071,7 @@ UserInputService.InputEnded.Connect(UserInputService.InputEnded, function(InputO
 			UiInteractionRuntimeTable.fovSliderDragging = false
 			UiInteractionRuntimeTable.hitChanceSliderDragging = false
 			UiInteractionRuntimeTable.dragEnabled = true
+			SchedulePersistentStateSave()
 		end
 	end
 end)
@@ -6837,9 +7091,11 @@ end)
 
 local MenuIsOpenBoolean = true
 local MenuOpenPosition = MenuFrame.Position
+local PlayerListOpenPosition = PlayerListRuntimeTable.frame.Position
 local MenuClosedPosition = UDim2.new(MenuOpenPosition.X.Scale, MenuOpenPosition.X.Offset, MenuOpenPosition.Y.Scale, MenuOpenPosition.Y.Offset - 150)
 local MenuTweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local MenuHasCustomPositionBoolean = false
+local PlayerListHasCustomPositionBoolean = false
 
 function RoundAbsoluteUdim2Position(PositionUdim2)
 	if typeof(PositionUdim2) ~= "UDim2" then
@@ -6864,15 +7120,26 @@ function BuildMenuClosedPositionFromOpenPosition(OpenPositionUdim2)
 	)
 end
 
-function ClampMenuOpenPositionToViewport(OpenPositionUdim2, ViewportWidthNumber, ViewportHeightNumber, MenuWidthScaledNumber, MenuHeightScaledNumber, MarginNumber)
+function ClampAbsoluteUdim2PositionToViewport(OpenPositionUdim2, ViewportWidthNumber, ViewportHeightNumber, FrameWidthScaledNumber, FrameHeightScaledNumber, MarginNumber)
 	local RoundedOpenPosition = RoundAbsoluteUdim2Position(OpenPositionUdim2)
-	local MaximumXOffsetNumber = math.max(MarginNumber, ViewportWidthNumber - MenuWidthScaledNumber - MarginNumber)
-	local MaximumYOffsetNumber = math.max(MarginNumber, ViewportHeightNumber - MenuHeightScaledNumber - MarginNumber)
+	local MaximumXOffsetNumber = math.max(MarginNumber, ViewportWidthNumber - FrameWidthScaledNumber - MarginNumber)
+	local MaximumYOffsetNumber = math.max(MarginNumber, ViewportHeightNumber - FrameHeightScaledNumber - MarginNumber)
 	return UDim2.new(
 		0,
 		math.floor(math.clamp(RoundedOpenPosition.X.Offset, MarginNumber, MaximumXOffsetNumber) + 0.5),
 		0,
 		math.floor(math.clamp(RoundedOpenPosition.Y.Offset, MarginNumber, MaximumYOffsetNumber) + 0.5)
+	)
+end
+
+function ClampMenuOpenPositionToViewport(OpenPositionUdim2, ViewportWidthNumber, ViewportHeightNumber, MenuWidthScaledNumber, MenuHeightScaledNumber, MarginNumber)
+	return ClampAbsoluteUdim2PositionToViewport(
+		OpenPositionUdim2,
+		ViewportWidthNumber,
+		ViewportHeightNumber,
+		MenuWidthScaledNumber,
+		MenuHeightScaledNumber,
+		MarginNumber
 	)
 end
 
@@ -6882,6 +7149,42 @@ function StoreMenuOpenPosition(OpenPositionUdim2, HasCustomPositionBoolean)
 	if HasCustomPositionBoolean ~= nil then
 		MenuHasCustomPositionBoolean = HasCustomPositionBoolean == true
 	end
+end
+
+function StorePlayerListOpenPosition(OpenPositionUdim2, HasCustomPositionBoolean)
+	PlayerListOpenPosition = RoundAbsoluteUdim2Position(OpenPositionUdim2)
+	if HasCustomPositionBoolean ~= nil then
+		PlayerListHasCustomPositionBoolean = HasCustomPositionBoolean == true
+	end
+end
+
+local function ApplyPendingPersistentUiState()
+	local UiStateTable = PersistentSettingsRuntimeTable.pendingUiState
+	if type(UiStateTable) ~= "table" then
+		return
+	end
+
+	local LoadedMenuOpenPosition = DeserializePersistedPosition(UiStateTable.menuOpenPosition)
+	if LoadedMenuOpenPosition then
+		StoreMenuOpenPosition(
+			LoadedMenuOpenPosition,
+			type(UiStateTable.menuHasCustomPosition) == "boolean" and UiStateTable.menuHasCustomPosition or true
+		)
+	elseif type(UiStateTable.menuHasCustomPosition) == "boolean" then
+		MenuHasCustomPositionBoolean = UiStateTable.menuHasCustomPosition
+	end
+
+	local LoadedPlayerListOpenPosition = DeserializePersistedPosition(UiStateTable.playerListOpenPosition)
+	if LoadedPlayerListOpenPosition then
+		StorePlayerListOpenPosition(
+			LoadedPlayerListOpenPosition,
+			type(UiStateTable.playerListHasCustomPosition) == "boolean" and UiStateTable.playerListHasCustomPosition or true
+		)
+	elseif type(UiStateTable.playerListHasCustomPosition) == "boolean" then
+		PlayerListHasCustomPositionBoolean = UiStateTable.playerListHasCustomPosition
+	end
+
+	PersistentSettingsRuntimeTable.pendingUiState = nil
 end
 
 function UpdateResponsiveUiLayout()
@@ -6960,6 +7263,12 @@ function UpdateResponsiveUiLayout()
 		0,
 		math.floor(MenuYOffsetNumber + 0.5)
 	)
+	local CenteredPlayerListOpenPosition = UDim2.new(
+		0,
+		math.floor(PlayerListXOffsetNumber + 0.5),
+		0,
+		math.floor(PlayerListYOffsetNumber + 0.5)
+	)
 	if MenuHasCustomPositionBoolean then
 		StoreMenuOpenPosition(
 			ClampMenuOpenPositionToViewport(
@@ -6976,12 +7285,22 @@ function UpdateResponsiveUiLayout()
 		StoreMenuOpenPosition(CenteredMenuOpenPosition, false)
 	end
 	MenuFrame.Position = MenuIsOpenBoolean and MenuOpenPosition or MenuClosedPosition
-	PlayerListRuntimeTable.frame.Position = UDim2.new(
-		0,
-		math.floor(PlayerListXOffsetNumber + 0.5),
-		0,
-		math.floor(PlayerListYOffsetNumber + 0.5)
-	)
+	if PlayerListHasCustomPositionBoolean then
+		StorePlayerListOpenPosition(
+			ClampAbsoluteUdim2PositionToViewport(
+				PlayerListOpenPosition,
+				ViewportWidthNumber,
+				ViewportHeightNumber,
+				PlayerListWidthScaledNumber,
+				PlayerListHeightScaledNumber,
+				MarginNumber
+			),
+			true
+		)
+	else
+		StorePlayerListOpenPosition(CenteredPlayerListOpenPosition, false)
+	end
+	PlayerListRuntimeTable.frame.Position = PlayerListOpenPosition
 
 	local DebugXOffsetNumber = PlayerListXOffsetNumber + PlayerListWidthScaledNumber + GapNumber
 	local DebugYOffsetNumber = MenuYOffsetNumber
@@ -7015,11 +7334,11 @@ function UpdatePlayerListCollapseButtonAppearance()
 end
 
 function SetPlayerListCollapsed(CollapsedBoolean)
-	local CurrentPlayerListPosition = PlayerListRuntimeTable.frame.Position
+	StorePlayerListOpenPosition(PlayerListRuntimeTable.frame.Position, PlayerListHasCustomPositionBoolean)
 	PlayerListRuntimeTable.collapsed = CollapsedBoolean == true
 	UpdatePlayerListCollapseButtonAppearance()
 	UpdateResponsiveUiLayout()
-	PlayerListRuntimeTable.frame.Position = CurrentPlayerListPosition
+	SchedulePersistentStateSave()
 end
 
 function TogglePlayerListCollapsed()
@@ -7034,6 +7353,7 @@ PlayerListRuntimeTable.toggleButton.MouseButton1Click.Connect(PlayerListRuntimeT
 end)
 
 UpdatePlayerListCollapseButtonAppearance()
+ApplyPendingPersistentUiState()
 UpdateResponsiveUiLayout()
 if Camera and Camera.GetPropertyChangedSignal then
 	Camera.GetPropertyChangedSignal(Camera, "ViewportSize").Connect(Camera.GetPropertyChangedSignal(Camera, "ViewportSize"), function()
@@ -7081,6 +7401,7 @@ UserInputService.InputBegan.Connect(UserInputService.InputBegan, function(InputO
 		UpdateSillySkyVisibilityButtonAppearance()
 		UpdateDebugStatus("silly sky aim=" .. tostring(SillySkyAimEnabledBoolean))
 		DebugLog("toggle-sky-aim", "Silly Mode sky aim set to " .. tostring(SillySkyAimEnabledBoolean), true)
+		SchedulePersistentStateSave()
 	elseif InputObject.KeyCode == Enum.KeyCode.RightBracket and GetCurrentLockKeyMode() == "Always" then
 		AdvanceLockKeyMode()
 		UpdateLockKeyButtonAppearance()
@@ -7126,6 +7447,106 @@ SetTargetCubeVisible = function(IsVisible)
 	for _, Line in ipairs(TargetCubeLines) do
 		Line.Visible = IsVisible
 	end
+end
+
+local function BuildPersistentGlobalStateTable()
+	return {
+		smoothing = tonumber(AimbotSmoothingNumber) or 0,
+		fovRadius = tonumber(FovCircle.Radius) or 0,
+		hookHitChance = tonumber(NormalHookHitChanceNumber) or 100,
+		headshotPriority = HeadshotPriorityBoolean == true,
+		autoFireEnabled = AutoFireEnabledBoolean == true,
+		visibleCheckEnabled = VisibleCheckEnabledBoolean == true,
+		targetSegmentationEnabled = TargetSegmentationEnabledBoolean == true,
+		showFovCircle = ShowFovCircleBoolean == true,
+		showTargetLine = ShowTargetLineBoolean == true,
+		useHookMethod = UseHookMethodBoolean == true,
+		useCameraMethod = UseCameraMethodBoolean == true,
+		stickyAimEnabled = StickyAimEnabledBoolean == true,
+		lockKeyModeIndex = math.floor(tonumber(LockKeyModeIndexNumber) or 1),
+		espEnabled = EspEnabledBoolean == true,
+		espSkeletonEnabled = EspSkeletonEnabledBoolean == true,
+		espHighlightEnabled = EspHighlightEnabledBoolean == true,
+		ui = {
+			menuOpenPosition = SerializePersistedPosition(MenuOpenPosition),
+			menuHasCustomPosition = MenuHasCustomPositionBoolean == true,
+			playerListOpenPosition = SerializePersistedPosition(PlayerListOpenPosition),
+			playerListHasCustomPosition = PlayerListHasCustomPositionBoolean == true,
+			playerListCollapsed = PlayerListRuntimeTable.collapsed == true,
+		},
+	}
+end
+
+local function BuildPersistentGameStateTable()
+	if IsBloodZonePlaceBoolean then
+		return {
+			sillyModeEnabled = SillyModeEnabledBoolean == true,
+			sillySkyAimEnabled = SillySkyAimEnabledBoolean == true,
+			sillySkyVisibilityCheckEnabled = SillySkyVisibilityCheckEnabledBoolean == true,
+			shieldModeEnabled = ShieldModeEnabledBoolean == true,
+		}
+	end
+
+	return nil
+end
+
+SavePersistentStateNow = function()
+	if type(writefile) ~= "function" then
+		return false
+	end
+
+	local ExistingRootStateTable = type(PersistentSettingsRuntimeTable.loadedState) == "table"
+		and PersistentSettingsRuntimeTable.loadedState
+		or nil
+	local GamesTable = type(ExistingRootStateTable and ExistingRootStateTable.games) == "table"
+		and ExistingRootStateTable.games
+		or {}
+	local RootStateTable = {
+		version = PersistentSettingsRuntimeTable.version,
+		global = BuildPersistentGlobalStateTable(),
+		games = GamesTable,
+	}
+
+	local GameStateTable = BuildPersistentGameStateTable()
+	if GameStateTable then
+		GamesTable[PersistentSettingsRuntimeTable.gameKey] = GameStateTable
+	else
+		GamesTable[PersistentSettingsRuntimeTable.gameKey] = nil
+	end
+
+	local EncodeSuccessBoolean, EncodedStateString = pcall(HttpService.JSONEncode, HttpService, RootStateTable)
+	if not EncodeSuccessBoolean or type(EncodedStateString) ~= "string" or EncodedStateString == "" then
+		return false
+	end
+
+	local FilePathString = ResolvePersistentSettingsFilePathForWrite()
+	local WriteSuccessBoolean = false
+	if type(FilePathString) == "string" and FilePathString ~= "" then
+		WriteSuccessBoolean = pcall(writefile, FilePathString, EncodedStateString)
+	end
+	if not WriteSuccessBoolean and FilePathString ~= PersistentSettingsRuntimeTable.fallbackFilePath then
+		PersistentSettingsRuntimeTable.activeFilePath = PersistentSettingsRuntimeTable.fallbackFilePath
+		WriteSuccessBoolean = pcall(writefile, PersistentSettingsRuntimeTable.fallbackFilePath, EncodedStateString)
+	end
+	if WriteSuccessBoolean then
+		PersistentSettingsRuntimeTable.loadedState = RootStateTable
+	end
+	return WriteSuccessBoolean == true
+end
+
+SchedulePersistentStateSave = function()
+	if type(writefile) ~= "function" then
+		return
+	end
+
+	PersistentSettingsRuntimeTable.saveSequence = (PersistentSettingsRuntimeTable.saveSequence or 0) + 1
+	local SaveSequenceNumber = PersistentSettingsRuntimeTable.saveSequence
+	task.delay(0.2, function()
+		if PersistentSettingsRuntimeTable.saveSequence ~= SaveSequenceNumber then
+			return
+		end
+		SavePersistentStateNow()
+	end)
 end
 
 function UpdateTargetCube(CubeCFrame, CubeSize, SurfacePointVector3)
