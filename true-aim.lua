@@ -217,11 +217,6 @@ EspRuntimeTable = {
 	highlightTargetOutlineTransparency = 0.02,
 	maxSkeletonLineCount = 14,
 	offscreenCullMargin = 140,
-	targetUpdateInterval = 0,
-	priorityUpdateInterval = 0.025,
-	nearUpdateInterval = 0.035,
-	mediumUpdateInterval = 0.06,
-	farUpdateInterval = 0.1,
 	nearDistance = 110,
 	mediumDistance = 240,
 	rigProfiles = {
@@ -7858,22 +7853,6 @@ EspRuntimeTable.GetOrCreateDrawings = function(self, CharacterModel)
 	return DrawingSet
 end
 
-EspRuntimeTable.GetCharacterUpdateInterval = function(self, CharacterModel, PlayerObject, DistanceNumber)
-	if CharacterModel and CharacterModel == CurrentTargetCharacterModel then
-		return self.targetUpdateInterval or 0
-	end
-	if PlayerObject and PlayerListRuntimeTable.IsPriorityPlayer(PlayerObject) then
-		return self.priorityUpdateInterval or 0.025
-	end
-	if DistanceNumber <= (self.nearDistance or 110) then
-		return self.nearUpdateInterval or 0.035
-	end
-	if DistanceNumber <= (self.mediumDistance or 240) then
-		return self.mediumUpdateInterval or 0.06
-	end
-	return self.farUpdateInterval or 0.1
-end
-
 EspRuntimeTable.HideDrawingSet = function(self, DrawingSet)
 	if not DrawingSet then
 		return
@@ -8143,14 +8122,6 @@ EspRuntimeTable.UpdateCharacter = function(self, CharacterModel, PlayerObject)
 	if DistanceNumber > MaxDistanceNumber then
 		self:HideDrawingSet(DrawingSet)
 		DrawingSet.lastUpdateTime = NowNumber
-		return false
-	end
-	local UpdateIntervalNumber = self:GetCharacterUpdateInterval(CharacterModel, PlayerObject, DistanceNumber)
-	if UpdateIntervalNumber > 0 and (NowNumber - (DrawingSet.lastUpdateTime or 0)) < UpdateIntervalNumber then
-		if DrawingSet.lastVisible then
-			DrawingSet.lastSeenFrame = CurrentFrameSequenceNumber
-			return true
-		end
 		return false
 	end
 	local AnchorScreenPointVector3, AnchorOnScreenBoolean = Camera.WorldToViewportPoint(Camera, AnchorPartInstance.Position)
