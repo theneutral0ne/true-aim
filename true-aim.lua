@@ -7447,6 +7447,15 @@ function RaycastToTargetIgnoringGlass(TargetPositionVector3)
 	return RaycastBetweenIgnoringGlass(OriginVector3, TargetPositionVector3, nil)
 end
 
+function CanUseSkyVisibilityCheck()
+	return IsBloodZonePlaceBoolean
+		and SillySkyVisibilityCheckEnabledBoolean
+		and IsSillyModeBehaviorActive()
+		and SillySkyAimEnabledBoolean
+		and not ShieldModeEnabledBoolean
+		and not ShieldModeRuntimeTable.IsProjectileWeaponProfile(CurrentWeaponBallisticsProfileTable)
+end
+
 function IsVisible(TargetPositionVector3, CharacterModel, PartInstance)
 	if IsTargetPointBlockedByMetalShield(TargetPositionVector3, CharacterModel) then
 		return false
@@ -7465,31 +7474,6 @@ function IsVisible(TargetPositionVector3, CharacterModel, PartInstance)
 	end
 	if HitTargetBoolean then
 		return true
-	end
-
-	if IsBloodZonePlaceBoolean
-		and SillySkyVisibilityCheckEnabledBoolean
-		and IsSillyModeBehaviorActive()
-		and SillySkyAimEnabledBoolean
-		and not ShieldModeEnabledBoolean
-		and not ShieldModeRuntimeTable.IsProjectileWeaponProfile(CurrentWeaponBallisticsProfileTable) then
-		local LocalCharacterModel = CurrentFrameLocalCharacterModel
-		if CurrentFrameLocalCharacterReadyBoolean and LocalCharacterModel and LocalCharacterModel.Parent then
-			local EquippedTool = ShieldModeRuntimeTable.GetEquippedTool and ShieldModeRuntimeTable.GetEquippedTool(LocalCharacterModel) or nil
-			local SkyAimSolutionTable = ResolveSkyAimSolution(
-				LocalCharacterModel,
-				nil,
-				EquippedTool,
-				TargetPositionVector3,
-				CharacterModel,
-				PartInstance,
-				true,
-				3
-			)
-			if SkyAimSolutionTable and (SkyAimSolutionTable.priority or -1) >= 3 then
-				return true
-			end
-		end
 	end
 
 	return false
@@ -8127,6 +8111,43 @@ function GetProjectileArcVisibleTargetData(PartInstance, CharacterModel)
 	}
 end
 
+function GetSkyVisibleTargetData(PartInstance, CharacterModel)
+	if not CanUseSkyVisibilityCheck() then
+		return nil
+	end
+	if not PartInstance or not PartInstance.Parent or not CharacterModel or not CharacterModel.Parent then
+		return nil
+	end
+
+	local LocalCharacterModel = CurrentFrameLocalCharacterModel
+	if not CurrentFrameLocalCharacterReadyBoolean or not LocalCharacterModel or not LocalCharacterModel.Parent then
+		return nil
+	end
+
+	local EquippedTool = ShieldModeRuntimeTable.GetEquippedTool and ShieldModeRuntimeTable.GetEquippedTool(LocalCharacterModel) or nil
+	local TargetPointVector3 = PartInstance.Position
+	local SkyAimSolutionTable = ResolveSkyAimSolution(
+		LocalCharacterModel,
+		nil,
+		EquippedTool,
+		TargetPointVector3,
+		CharacterModel,
+		PartInstance,
+		true,
+		3
+	)
+	if not SkyAimSolutionTable or (SkyAimSolutionTable.priority or -1) < 3 then
+		return nil
+	end
+
+	return {
+		point = TargetPointVector3,
+		cubeCFrame = PartInstance.CFrame,
+		cubeSize = PartInstance.Size,
+		part = PartInstance,
+	}
+end
+
 function ShieldModeRuntimeTable.ResolveVisibleSurfacePointForPart(PartInstance, CharacterModel, MouseLocationVector2, SubdivisionNumber)
 	SubdivisionNumber = math.max(tonumber(SubdivisionNumber) or 1, 1)
 
@@ -8262,14 +8283,21 @@ function GetVisiblePointForPart(PartInstance, CharacterModel, MouseLocationVecto
 			return ShieldModeRuntimeTable.GetJailbirdVisiblePointForPart(PartInstance, CharacterModel, MouseLocationVector2)
 		end
 		local CenterPointVector3 = PartInstance.Position
-		if not IsVisible(CenterPointVector3, CharacterModel, PartInstance) then
-			return GetProjectileArcVisibleTargetData(PartInstance, CharacterModel)
+		if IsVisible(CenterPointVector3, CharacterModel, PartInstance) then
+			return {
+				point = CenterPointVector3,
+				cubeCFrame = PartInstance.CFrame,
+				cubeSize = PartInstance.Size,
+			}
 		end
-		return {
-			point = CenterPointVector3,
-			cubeCFrame = PartInstance.CFrame,
-			cubeSize = PartInstance.Size,
-		}
+		local ProjectileArcVisibleTargetData = GetProjectileArcVisibleTargetData(PartInstance, CharacterModel)
+		if ProjectileArcVisibleTargetData then
+			return ProjectileArcVisibleTargetData
+		end
+		if IsBloodZonePlaceBoolean then
+			return GetSkyVisibleTargetData(PartInstance, CharacterModel)
+		end
+		return nil
 	end
 
 	local CenterPointVector3 = PartInstance.Position
@@ -8286,12 +8314,20 @@ function GetVisiblePointForPart(PartInstance, CharacterModel, MouseLocationVecto
 		return ProjectileArcVisibleTargetData
 	end
 
-	return ShieldModeRuntimeTable.ResolveVisibleSurfacePointForPart(
+	local VisibleTargetData = ShieldModeRuntimeTable.ResolveVisibleSurfacePointForPart(
 		PartInstance,
 		CharacterModel,
 		MouseLocationVector2,
 		VisibleCheckSubdivisionsNumber
 	)
+	if VisibleTargetData then
+		return VisibleTargetData
+	end
+
+	if IsBloodZonePlaceBoolean then
+		return GetSkyVisibleTargetData(PartInstance, CharacterModel)
+	end
+	return nil
 end
 
 function ShieldModeRuntimeTable.RejectTargetDataForPart(ReasonKey, DebugKey, CharacterModel, PartInstance, MessageString)
