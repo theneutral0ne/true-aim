@@ -101,6 +101,7 @@ ShowTargetLineBoolean = true
 EspEnabledBoolean = true
 EspSkeletonEnabledBoolean = true
 EspHighlightEnabledBoolean = true
+JailbirdGrenadeEspEnabledBoolean = true
 
 UseHookMethodBoolean = true
 UseCameraMethodBoolean = true
@@ -153,6 +154,7 @@ local GameIntegrationProfilesByPlaceIdTable = {
 	},
 	[14939963714] = {
 		id = "jailbird",
+		menuHeight = 642,
 	},
 }
 CurrentGameIntegrationProfileTable = GameIntegrationProfilesByPlaceIdTable[game.PlaceId]
@@ -310,6 +312,36 @@ EspRuntimeTable = {
 				{ "rightHip", "rightFoot" },
 			},
 		},
+	},
+}
+JailbirdGrenadeEspRuntimeTable = {
+	trackedByModel = setmetatable({}, { __mode = "k" }),
+	activeByModel = setmetatable({}, { __mode = "k" }),
+	trackingConnections = {},
+	trackingReady = false,
+	maxTrajectoryLineCount = 18,
+	trajectoryStepTime = 0.12,
+	defaultPredictionTime = 2.5,
+	maxPredictionTime = 5,
+	defaultRange = 10,
+	defaultProximity = nil,
+	grenadeNames = {
+		["Frag Grenade"] = true,
+		["Impact Grenade"] = true,
+		["Sticky Grenade"] = true,
+		["Flashbang"] = true,
+		["Flashbang Grenade"] = true,
+		["Gas Grenade"] = true,
+		["Smoke Grenade"] = true,
+		["Decoy Grenade"] = true,
+		["Molotov"] = true,
+		["Proximity Alarm"] = true,
+		["Tear Gas"] = true,
+	},
+	nameFragments = {
+		"Grenade",
+		"Molotov",
+		"Proximity Alarm",
 	},
 }
 PlayerListEntryStateCacheDurationNumber = CurrentGameIntegrationPlayerListEntryCacheDurationNumber
@@ -623,6 +655,9 @@ local function ApplyLoadedPersistentScalarState(StateTable)
 	end
 	if type(StateTable.espHighlightEnabled) == "boolean" then
 		EspHighlightEnabledBoolean = StateTable.espHighlightEnabled
+	end
+	if type(StateTable.jailbirdGrenadeEspEnabled) == "boolean" then
+		JailbirdGrenadeEspEnabledBoolean = StateTable.jailbirdGrenadeEspEnabled
 	end
 
 	local UiStateTable = type(StateTable.ui) == "table" and StateTable.ui or nil
@@ -6222,6 +6257,7 @@ HookHitChanceSliderKnobFrame.Parent = HookHitChanceSliderBackFrame
 local SillyModeToggleButton = nil
 local ShieldModeToggleButton = nil
 local SillySkyVisibilityToggleButton = nil
+JailbirdGrenadeEspToggleButton = nil
 if IsBloodZonePlaceBoolean then
 	SillyModeToggleButton = Instance.new("TextButton")
 	SillyModeToggleButton.Name = "SillyModeToggleButton"
@@ -6302,6 +6338,21 @@ EspHighlightToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 EspHighlightToggleButton.ZIndex = 101
 EspHighlightToggleButton.Parent = MenuFrame
 
+if IsJailbirdPlaceBoolean then
+	JailbirdGrenadeEspToggleButton = Instance.new("TextButton")
+	JailbirdGrenadeEspToggleButton.Name = "JailbirdGrenadeEspToggleButton"
+	JailbirdGrenadeEspToggleButton.Size = UDim2.new(1, -20, 0, 20)
+	JailbirdGrenadeEspToggleButton.Position = UDim2.new(0, 10, 0, 602)
+	JailbirdGrenadeEspToggleButton.BackgroundColor3 = Color3.fromRGB(115, 80, 45)
+	JailbirdGrenadeEspToggleButton.BorderSizePixel = 0
+	JailbirdGrenadeEspToggleButton.Text = "Grenade ESP: ON"
+	JailbirdGrenadeEspToggleButton.Font = Enum.Font.SourceSans
+	JailbirdGrenadeEspToggleButton.TextSize = 16
+	JailbirdGrenadeEspToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	JailbirdGrenadeEspToggleButton.ZIndex = 101
+	JailbirdGrenadeEspToggleButton.Parent = MenuFrame
+end
+
 ApplyAimbotUiDecoration(SmoothSliderBackFrame, 4, Color3.fromRGB(55, 105, 155))
 ApplyAimbotUiDecoration(SmoothSliderKnobFrame, 4, Color3.fromRGB(170, 205, 235))
 ApplyAimbotUiDecoration(FovSliderBackFrame, 4, Color3.fromRGB(55, 135, 105))
@@ -6320,6 +6371,9 @@ ApplyAimbotUiDecoration(StickyAimToggleButton, 5, Color3.fromRGB(95, 105, 120))
 ApplyAimbotUiDecoration(EspToggleButton, 5, Color3.fromRGB(70, 130, 90))
 ApplyAimbotUiDecoration(EspSkeletonToggleButton, 5, Color3.fromRGB(65, 110, 85))
 ApplyAimbotUiDecoration(EspHighlightToggleButton, 5, Color3.fromRGB(85, 120, 150))
+if JailbirdGrenadeEspToggleButton then
+	ApplyAimbotUiDecoration(JailbirdGrenadeEspToggleButton, 5, Color3.fromRGB(150, 105, 60))
+end
 if SillyModeToggleButton then
 	ApplyAimbotUiDecoration(SillyModeToggleButton, 5, Color3.fromRGB(135, 70, 145))
 end
@@ -6334,7 +6388,7 @@ CreateAimbotSectionSurface("AimSettingsSurfaceFrame", 44, 100)
 CreateAimbotSectionSurface("TargetingSurfaceFrame", 164, 106)
 CreateAimbotSectionSurface("VisibilitySurfaceFrame", 288, 60)
 CreateAimbotSectionSurface("BehaviorSurfaceFrame", 368, IsBloodZonePlaceBoolean and 202 or 126)
-CreateAimbotSectionSurface("EspSurfaceFrame", IsBloodZonePlaceBoolean and 594 or 518, 84)
+CreateAimbotSectionSurface("EspSurfaceFrame", IsBloodZonePlaceBoolean and 594 or 518, IsJailbirdPlaceBoolean and 108 or 84)
 
 CreateSectionHeader("Targeting", 150)
 CreateSectionHeader("Visibility", 274)
@@ -6599,6 +6653,19 @@ function UpdateEspHighlightToggleButtonAppearance()
 	end
 end
 
+function UpdateJailbirdGrenadeEspToggleButtonAppearance()
+	if not JailbirdGrenadeEspToggleButton then
+		return
+	end
+	if JailbirdGrenadeEspEnabledBoolean then
+		JailbirdGrenadeEspToggleButton.BackgroundColor3 = Color3.fromRGB(145, 95, 45)
+		JailbirdGrenadeEspToggleButton.Text = "Grenade ESP: ON"
+	else
+		JailbirdGrenadeEspToggleButton.BackgroundColor3 = Color3.fromRGB(70, 60, 50)
+		JailbirdGrenadeEspToggleButton.Text = "Grenade ESP: OFF"
+	end
+end
+
 local function RefreshBloodZoneBehaviorButtons()
 	UpdateHeadshotButtonAppearance()
 	UpdateAutoFireButtonAppearance()
@@ -6800,6 +6867,7 @@ EspToggleButton.MouseButton1Click.Connect(EspToggleButton.MouseButton1Click, fun
 	UpdateEspToggleButtonAppearance()
 	UpdateEspSkeletonToggleButtonAppearance()
 	UpdateEspHighlightToggleButtonAppearance()
+	UpdateJailbirdGrenadeEspToggleButtonAppearance()
 	if not EspEnabledBoolean then
 		EspRuntimeTable.HideAll(EspRuntimeTable)
 	end
@@ -6838,6 +6906,20 @@ EspHighlightToggleButton.MouseButton1Click.Connect(EspHighlightToggleButton.Mous
 	SchedulePersistentStateSave()
 end)
 
+if JailbirdGrenadeEspToggleButton then
+	JailbirdGrenadeEspToggleButton.MouseButton1Click.Connect(JailbirdGrenadeEspToggleButton.MouseButton1Click, function()
+		if IsAimbotUiInputSuppressed() then
+			return
+		end
+		JailbirdGrenadeEspEnabledBoolean = not JailbirdGrenadeEspEnabledBoolean
+		UpdateJailbirdGrenadeEspToggleButtonAppearance()
+		if not JailbirdGrenadeEspEnabledBoolean then
+			JailbirdGrenadeEspRuntimeTable.HideAll(JailbirdGrenadeEspRuntimeTable)
+		end
+		SchedulePersistentStateSave()
+	end)
+end
+
 UpdateHeadshotButtonAppearance()
 UpdateAutoFireButtonAppearance()
 UpdateVisibleCheckButtonAppearance()
@@ -6854,6 +6936,7 @@ UpdateSillySkyVisibilityButtonAppearance()
 UpdateEspToggleButtonAppearance()
 UpdateEspSkeletonToggleButtonAppearance()
 UpdateEspHighlightToggleButtonAppearance()
+UpdateJailbirdGrenadeEspToggleButtonAppearance()
 PlayerListRuntimeTable.RefreshUi(true)
 
 local function MakeFrameDraggable(FrameInstance, DragHandleInstance)
@@ -7474,6 +7557,7 @@ function BuildPersistentGlobalStateTable()
 		espEnabled = EspEnabledBoolean == true,
 		espSkeletonEnabled = EspSkeletonEnabledBoolean == true,
 		espHighlightEnabled = EspHighlightEnabledBoolean == true,
+		jailbirdGrenadeEspEnabled = JailbirdGrenadeEspEnabledBoolean == true,
 		ui = {
 			menuOpenPosition = SerializePersistedPosition(MenuOpenPosition),
 			menuHasCustomPosition = MenuHasCustomPositionBoolean == true,
@@ -8671,6 +8755,448 @@ EspRuntimeTable.Update = function(self, LocalCharacterModel, TeamCheckEnabledBoo
 	end
 
 	for _, DrawingSet in pairs(self.drawingsByCharacter) do
+		if DrawingSet.lastSeenFrame ~= CurrentFrameSequenceNumber then
+			self:HideDrawingSet(DrawingSet)
+		end
+	end
+end
+
+JailbirdGrenadeEspRuntimeTable.CreateLine = function(self, ThicknessNumber)
+	local LineObject = Drawing.new("Line")
+	LineObject.Thickness = ThicknessNumber or 1
+	LineObject.Transparency = 1
+	LineObject.Color = Color3.fromRGB(255, 190, 90)
+	LineObject.Visible = false
+	return LineObject
+end
+
+JailbirdGrenadeEspRuntimeTable.CreateText = function(self, SizeNumber)
+	local TextObject = Drawing.new("Text")
+	TextObject.Size = SizeNumber or 13
+	TextObject.Transparency = 1
+	TextObject.Color = Color3.fromRGB(255, 230, 170)
+	TextObject.Visible = false
+	TextObject.Center = true
+	pcall(function()
+		TextObject.Outline = true
+	end)
+	return TextObject
+end
+
+JailbirdGrenadeEspRuntimeTable.CreateCircle = function(self)
+	local CircleObject = Drawing.new("Circle")
+	CircleObject.NumSides = 48
+	CircleObject.Thickness = 1.5
+	CircleObject.Filled = false
+	CircleObject.Transparency = 0.9
+	CircleObject.Color = Color3.fromRGB(255, 120, 70)
+	CircleObject.Visible = false
+	return CircleObject
+end
+
+JailbirdGrenadeEspRuntimeTable.RemoveDrawingObject = function(self, DrawingObject)
+	if not DrawingObject then
+		return
+	end
+	pcall(function()
+		if DrawingObject.Remove then
+			DrawingObject.Remove(DrawingObject)
+		elseif DrawingObject.Destroy then
+			DrawingObject.Destroy(DrawingObject)
+		end
+	end)
+end
+
+JailbirdGrenadeEspRuntimeTable.GetOrCreateDrawings = function(self, GrenadeModel)
+	local DrawingSet = self.trackedByModel[GrenadeModel]
+	if DrawingSet then
+		return DrawingSet
+	end
+
+	DrawingSet = {
+		trajectoryLines = {},
+		aoeCircle = self:CreateCircle(),
+		infoText = self:CreateText(13),
+		firstSeenTime = tick(),
+		lastSeenFrame = 0,
+	}
+	for LineIndex = 1, self.maxTrajectoryLineCount do
+		DrawingSet.trajectoryLines[LineIndex] = self:CreateLine(1.5)
+	end
+	self.trackedByModel[GrenadeModel] = DrawingSet
+	return DrawingSet
+end
+
+JailbirdGrenadeEspRuntimeTable.HideDrawingSet = function(self, DrawingSet)
+	if not DrawingSet then
+		return
+	end
+	for _, LineObject in ipairs(DrawingSet.trajectoryLines or {}) do
+		LineObject.Visible = false
+	end
+	if DrawingSet.aoeCircle then
+		DrawingSet.aoeCircle.Visible = false
+	end
+	if DrawingSet.infoText then
+		DrawingSet.infoText.Visible = false
+	end
+end
+
+JailbirdGrenadeEspRuntimeTable.RemoveGrenadeDrawings = function(self, GrenadeModel)
+	local DrawingSet = self.trackedByModel[GrenadeModel]
+	if not DrawingSet then
+		return
+	end
+	for _, LineObject in ipairs(DrawingSet.trajectoryLines or {}) do
+		self:RemoveDrawingObject(LineObject)
+	end
+	self:RemoveDrawingObject(DrawingSet.aoeCircle)
+	self:RemoveDrawingObject(DrawingSet.infoText)
+	self.trackedByModel[GrenadeModel] = nil
+end
+
+JailbirdGrenadeEspRuntimeTable.HideAll = function(self)
+	for _, DrawingSet in pairs(self.trackedByModel) do
+		self:HideDrawingSet(DrawingSet)
+	end
+end
+
+JailbirdGrenadeEspRuntimeTable.IsGrenadeModel = function(self, InstanceObject)
+	if not InstanceObject or not InstanceObject.IsA or not InstanceObject.IsA(InstanceObject, "Model") then
+		return false
+	end
+	if self.grenadeNames[InstanceObject.Name] == true then
+		return true
+	end
+	local DamageNumber = tonumber(InstanceObject.GetAttribute(InstanceObject, "Damage"))
+	local RangeNumber = tonumber(InstanceObject.GetAttribute(InstanceObject, "Range"))
+	if not DamageNumber and not RangeNumber then
+		return false
+	end
+	for _, FragmentString in ipairs(self.nameFragments) do
+		if string.find(InstanceObject.Name, FragmentString, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+JailbirdGrenadeEspRuntimeTable.TrackCandidate = function(self, InstanceObject)
+	if self:IsGrenadeModel(InstanceObject) then
+		self.activeByModel[InstanceObject] = true
+	end
+end
+
+JailbirdGrenadeEspRuntimeTable.SetupTracking = function(self)
+	if self.trackingReady then
+		return
+	end
+	self.trackingReady = true
+
+	for _, DescendantInstance in ipairs(WorkspaceService.GetDescendants(WorkspaceService)) do
+		self:TrackCandidate(DescendantInstance)
+	end
+
+	local AddedConnection = WorkspaceService.DescendantAdded.Connect(WorkspaceService.DescendantAdded, function(DescendantInstance)
+		JailbirdGrenadeEspRuntimeTable.TrackCandidate(JailbirdGrenadeEspRuntimeTable, DescendantInstance)
+	end)
+	local RemovingConnection = WorkspaceService.DescendantRemoving.Connect(WorkspaceService.DescendantRemoving, function(DescendantInstance)
+		if JailbirdGrenadeEspRuntimeTable.activeByModel[DescendantInstance] then
+			JailbirdGrenadeEspRuntimeTable.activeByModel[DescendantInstance] = nil
+			JailbirdGrenadeEspRuntimeTable.RemoveGrenadeDrawings(JailbirdGrenadeEspRuntimeTable, DescendantInstance)
+		end
+	end)
+	self.trackingConnections[#self.trackingConnections + 1] = AddedConnection
+	self.trackingConnections[#self.trackingConnections + 1] = RemovingConnection
+end
+
+JailbirdGrenadeEspRuntimeTable.GetGrenadeBasePart = function(self, GrenadeModel)
+	if not GrenadeModel or not GrenadeModel.Parent then
+		return nil
+	end
+	local BasePart = GrenadeModel.FindFirstChild(GrenadeModel, "Base")
+	if BasePart and BasePart.IsA(BasePart, "BasePart") then
+		return BasePart
+	end
+	local HandlePart = GrenadeModel.FindFirstChild(GrenadeModel, "Handle")
+	if HandlePart and HandlePart.IsA(HandlePart, "BasePart") then
+		return HandlePart
+	end
+	local PrimaryPart = GrenadeModel.PrimaryPart
+	if PrimaryPart and PrimaryPart.IsA(PrimaryPart, "BasePart") then
+		return PrimaryPart
+	end
+	return GrenadeModel.FindFirstChildWhichIsA(GrenadeModel, "BasePart", true)
+end
+
+JailbirdGrenadeEspRuntimeTable.GetNumberAttribute = function(self, InstanceObject, AttributeNameString, DefaultNumber)
+	if not InstanceObject or not InstanceObject.GetAttribute then
+		return DefaultNumber
+	end
+	local ValueNumber = tonumber(InstanceObject.GetAttribute(InstanceObject, AttributeNameString))
+	if type(ValueNumber) == "number" then
+		return ValueNumber
+	end
+	return DefaultNumber
+end
+
+JailbirdGrenadeEspRuntimeTable.GetFuseRemaining = function(self, GrenadeModel, DrawingSet, NowNumber)
+	local DelayNumber = self:GetNumberAttribute(GrenadeModel, "Delay", nil)
+	if type(DelayNumber) ~= "number" or DelayNumber <= 0 then
+		return nil
+	end
+
+	local ServerTimeNowNumber = WorkspaceService.GetServerTimeNow and WorkspaceService.GetServerTimeNow(WorkspaceService) or nil
+	for _, AttributeNameString in ipairs({ "DetonateAt", "ExplodeAt", "FuseEndTime" }) do
+		local TimestampNumber = self:GetNumberAttribute(GrenadeModel, AttributeNameString, nil)
+		if type(TimestampNumber) == "number" and type(ServerTimeNowNumber) == "number" then
+			return math.max(0, TimestampNumber - ServerTimeNowNumber)
+		end
+	end
+
+	for _, AttributeNameString in ipairs({ "ThrownAt", "CreatedAt", "SpawnedAt" }) do
+		local TimestampNumber = self:GetNumberAttribute(GrenadeModel, AttributeNameString, nil)
+		if type(TimestampNumber) == "number" and type(ServerTimeNowNumber) == "number" then
+			return math.max(0, DelayNumber - (ServerTimeNowNumber - TimestampNumber))
+		end
+	end
+
+	return math.max(0, DelayNumber - (NowNumber - (DrawingSet.firstSeenTime or NowNumber)))
+end
+
+JailbirdGrenadeEspRuntimeTable.GetTrajectoryPoints = function(self, GrenadeModel, StartPositionVector3, StartVelocityVector3, TimeWindowNumber)
+	local PointsTable = {}
+	local GravityNumber = tonumber(WorkspaceService.Gravity) or 196.2
+	local StepTimeNumber = self.trajectoryStepTime or 0.12
+	local SegmentCountNumber = math.min(self.maxTrajectoryLineCount + 1, math.max(2, math.floor(TimeWindowNumber / StepTimeNumber) + 1))
+	local IgnoredInstancesTable = {}
+	AppendUniqueIgnoredInstance(IgnoredInstancesTable, GrenadeModel)
+	for PointIndex = 1, SegmentCountNumber do
+		local TimeNumber = (PointIndex - 1) * StepTimeNumber
+		local PositionVector3 = StartPositionVector3
+			+ (StartVelocityVector3 * TimeNumber)
+			+ Vector3.new(0, -0.5 * GravityNumber * TimeNumber * TimeNumber, 0)
+		local PreviousPositionVector3 = PointsTable[#PointsTable]
+		if PreviousPositionVector3 then
+			local SegmentVector3 = PositionVector3 - PreviousPositionVector3
+			if SegmentVector3.Magnitude > 0.001 then
+				local RaycastParamsObject = CloneRaycastParamsWithIgnoredInstances(nil, IgnoredInstancesTable)
+				local RaycastResult = RunUnredirectedWorkspaceRaycast(PreviousPositionVector3, SegmentVector3, RaycastParamsObject)
+				if RaycastResult and RaycastResult.Instance then
+					if RaycastResult.Instance.Transparency >= 1 or JailbirdVisibilityRuntimeTable.IsPassThroughPart(RaycastResult.Instance) then
+						AppendUniqueIgnoredInstance(IgnoredInstancesTable, RaycastResult.Instance)
+					else
+						PointsTable[#PointsTable + 1] = RaycastResult.Position
+						return PointsTable
+					end
+				end
+			end
+		end
+		PointsTable[PointIndex] = PositionVector3
+	end
+	return PointsTable
+end
+
+JailbirdGrenadeEspRuntimeTable.GetDamageLineOfSight = function(self, GrenadeModel, ExplosionPositionVector3, LocalRootPart)
+	if not ExplosionPositionVector3 or not LocalRootPart then
+		return false
+	end
+	local DirectionVector3 = LocalRootPart.Position - ExplosionPositionVector3
+	local DistanceNumber = DirectionVector3.Magnitude
+	if DistanceNumber <= 0.001 then
+		return true
+	end
+
+	local IgnoredInstancesTable = {}
+	AppendUniqueIgnoredInstance(IgnoredInstancesTable, GrenadeModel)
+	local CurrentOriginVector3 = ExplosionPositionVector3
+	local DirectionUnitVector3 = DirectionVector3.Unit
+	local RemainingDistanceNumber = DistanceNumber
+	for _ = 1, 10 do
+		local RaycastParamsObject = CloneRaycastParamsWithIgnoredInstances(nil, IgnoredInstancesTable)
+		local RaycastResult = RunUnredirectedWorkspaceRaycast(
+			CurrentOriginVector3,
+			DirectionUnitVector3 * RemainingDistanceNumber,
+			RaycastParamsObject
+		)
+		if not RaycastResult then
+			return false
+		end
+		if RaycastResult.Instance and RaycastResult.Instance.IsDescendantOf(RaycastResult.Instance, LocalRootPart.Parent) then
+			return true
+		end
+		if RaycastResult.Instance
+			and (RaycastResult.Instance.Transparency >= 1 or JailbirdVisibilityRuntimeTable.IsPassThroughPart(RaycastResult.Instance)) then
+			AppendUniqueIgnoredInstance(IgnoredInstancesTable, RaycastResult.Instance)
+			CurrentOriginVector3 = RaycastResult.Position + DirectionUnitVector3 * 0.01
+			RemainingDistanceNumber = DistanceNumber - (CurrentOriginVector3 - ExplosionPositionVector3).Magnitude
+			if RemainingDistanceNumber <= 0.001 then
+				return false
+			end
+		else
+			return false
+		end
+	end
+	return false
+end
+
+JailbirdGrenadeEspRuntimeTable.EstimateSelfDamage = function(self, GrenadeModel, ExplosionPositionVector3, LocalCharacterModel)
+	local LocalRootPart = GetCharacterRootPart(LocalCharacterModel)
+	if not LocalRootPart then
+		return 0, false, math.huge, self.defaultRange
+	end
+	local DamageNumber = self:GetNumberAttribute(GrenadeModel, "Damage", 0)
+	local RangeNumber = self:GetNumberAttribute(GrenadeModel, "Range", self.defaultRange)
+	local ProximityNumber = self:GetNumberAttribute(GrenadeModel, "Proximity", RangeNumber)
+	local OuterRangeNumber = math.max(RangeNumber, ProximityNumber or RangeNumber)
+	local DistanceNumber = (LocalRootPart.Position - ExplosionPositionVector3).Magnitude
+	if DamageNumber <= 0 or DistanceNumber > OuterRangeNumber then
+		return 0, false, DistanceNumber, OuterRangeNumber
+	end
+	local HasLineOfSightBoolean = self:GetDamageLineOfSight(GrenadeModel, ExplosionPositionVector3, LocalRootPart)
+	if not HasLineOfSightBoolean then
+		return 0, false, DistanceNumber, OuterRangeNumber
+	end
+	local EstimatedDamageNumber = DamageNumber
+	if DistanceNumber > RangeNumber and OuterRangeNumber > RangeNumber then
+		EstimatedDamageNumber = math.floor(DamageNumber * math.clamp((1 - ((DistanceNumber - RangeNumber) / (OuterRangeNumber - RangeNumber))) - 0.1, 0, 1))
+	end
+	return math.max(0, EstimatedDamageNumber), true, DistanceNumber, OuterRangeNumber
+end
+
+JailbirdGrenadeEspRuntimeTable.ProjectAoeCircle = function(self, DrawingSet, CenterPositionVector3, RadiusNumber, Color3Value)
+	local CenterScreenVector3, CenterOnScreenBoolean = Camera.WorldToViewportPoint(Camera, CenterPositionVector3)
+	if CenterScreenVector3.Z <= 0 then
+		DrawingSet.aoeCircle.Visible = false
+		return false, nil
+	end
+
+	local CameraCFrame = Camera.CFrame
+	local RightPointVector3 = CenterPositionVector3 + CameraCFrame.RightVector * RadiusNumber
+	local UpPointVector3 = CenterPositionVector3 + CameraCFrame.UpVector * RadiusNumber
+	local RightScreenVector3 = Camera.WorldToViewportPoint(Camera, RightPointVector3)
+	local UpScreenVector3 = Camera.WorldToViewportPoint(Camera, UpPointVector3)
+	local CenterVector2 = Vector2.new(CenterScreenVector3.X, CenterScreenVector3.Y)
+	local RadiusPixelsNumber = math.max(
+		(Vector2.new(RightScreenVector3.X, RightScreenVector3.Y) - CenterVector2).Magnitude,
+		(Vector2.new(UpScreenVector3.X, UpScreenVector3.Y) - CenterVector2).Magnitude
+	)
+	if RadiusPixelsNumber <= 1 then
+		DrawingSet.aoeCircle.Visible = false
+		return CenterOnScreenBoolean, CenterVector2
+	end
+
+	DrawingSet.aoeCircle.Position = CenterVector2
+	DrawingSet.aoeCircle.Radius = math.clamp(RadiusPixelsNumber, 2, 900)
+	DrawingSet.aoeCircle.Color = Color3Value
+	DrawingSet.aoeCircle.Visible = CenterOnScreenBoolean
+	return CenterOnScreenBoolean, CenterVector2
+end
+
+JailbirdGrenadeEspRuntimeTable.DrawTrajectory = function(self, DrawingSet, PointsTable, Color3Value)
+	for LineIndex = 1, self.maxTrajectoryLineCount do
+		local LineObject = DrawingSet.trajectoryLines[LineIndex]
+		local StartPointVector3 = PointsTable[LineIndex]
+		local EndPointVector3 = PointsTable[LineIndex + 1]
+		if StartPointVector3 and EndPointVector3 then
+			local StartScreenVector3, StartOnScreenBoolean = Camera.WorldToViewportPoint(Camera, StartPointVector3)
+			local EndScreenVector3, EndOnScreenBoolean = Camera.WorldToViewportPoint(Camera, EndPointVector3)
+			if StartScreenVector3.Z > 0 and EndScreenVector3.Z > 0 and (StartOnScreenBoolean or EndOnScreenBoolean) then
+				LineObject.From = Vector2.new(StartScreenVector3.X, StartScreenVector3.Y)
+				LineObject.To = Vector2.new(EndScreenVector3.X, EndScreenVector3.Y)
+				LineObject.Color = Color3Value
+				LineObject.Visible = true
+			else
+				LineObject.Visible = false
+			end
+		else
+			LineObject.Visible = false
+		end
+	end
+end
+
+JailbirdGrenadeEspRuntimeTable.GetActiveGrenades = function(self)
+	self:SetupTracking()
+	local GrenadesTable = {}
+	for GrenadeModel in pairs(self.activeByModel) do
+		if GrenadeModel and GrenadeModel.Parent and self:GetGrenadeBasePart(GrenadeModel) then
+			GrenadesTable[#GrenadesTable + 1] = GrenadeModel
+		else
+			self.activeByModel[GrenadeModel] = nil
+			self:RemoveGrenadeDrawings(GrenadeModel)
+		end
+	end
+	return GrenadesTable
+end
+
+JailbirdGrenadeEspRuntimeTable.UpdateGrenade = function(self, GrenadeModel, LocalCharacterModel)
+	local DrawingSet = self:GetOrCreateDrawings(GrenadeModel)
+	local BasePart = self:GetGrenadeBasePart(GrenadeModel)
+	if not BasePart or not BasePart.Parent then
+		self:HideDrawingSet(DrawingSet)
+		return
+	end
+
+	local NowNumber = tick()
+	local FuseRemainingNumber = self:GetFuseRemaining(GrenadeModel, DrawingSet, NowNumber)
+	local VelocityVector3 = SafeGetBasePartAssemblyLinearVelocity(BasePart) or Vector3.new(0, 0, 0)
+	local TimeWindowNumber = math.clamp(FuseRemainingNumber or self.defaultPredictionTime, 0.4, self.maxPredictionTime)
+	local PointsTable
+	if BasePart.Anchored or VelocityVector3.Magnitude < 0.75 then
+		PointsTable = { BasePart.Position }
+	else
+		PointsTable = self:GetTrajectoryPoints(GrenadeModel, BasePart.Position, VelocityVector3, TimeWindowNumber)
+	end
+	local ExplosionPositionVector3 = PointsTable[#PointsTable] or BasePart.Position
+	local DamageNumber, CanDamageBoolean, DistanceNumber, RadiusNumber = self:EstimateSelfDamage(GrenadeModel, ExplosionPositionVector3, LocalCharacterModel)
+	local DangerColor3 = CanDamageBoolean and DamageNumber > 0 and Color3.fromRGB(255, 75, 55) or Color3.fromRGB(255, 190, 90)
+
+	self:DrawTrajectory(DrawingSet, PointsTable, DangerColor3)
+	local AoeVisibleBoolean, CenterVector2 = self:ProjectAoeCircle(DrawingSet, ExplosionPositionVector3, RadiusNumber, DangerColor3)
+	local AnchorScreenVector3, AnchorOnScreenBoolean = Camera.WorldToViewportPoint(Camera, BasePart.Position)
+	local TextPositionVector2 = nil
+	if AnchorScreenVector3.Z > 0 and AnchorOnScreenBoolean then
+		TextPositionVector2 = Vector2.new(AnchorScreenVector3.X, AnchorScreenVector3.Y - 20)
+	elseif AoeVisibleBoolean and CenterVector2 then
+		TextPositionVector2 = CenterVector2 + Vector2.new(0, -18)
+	end
+
+	if TextPositionVector2 then
+		local FuseTextString = type(FuseRemainingNumber) == "number" and (string.format("%.1fs", FuseRemainingNumber)) or "?s"
+		DrawingSet.infoText.Text = GrenadeModel.Name
+			.. " | "
+			.. FuseTextString
+			.. " | "
+			.. tostring(math.floor(DamageNumber + 0.5))
+			.. " dmg | "
+			.. tostring(math.floor(DistanceNumber + 0.5))
+			.. " studs"
+		DrawingSet.infoText.Position = TextPositionVector2
+		DrawingSet.infoText.Color = DangerColor3
+		DrawingSet.infoText.Visible = true
+	else
+		DrawingSet.infoText.Visible = false
+	end
+	DrawingSet.lastSeenFrame = CurrentFrameSequenceNumber
+end
+
+JailbirdGrenadeEspRuntimeTable.Update = function(self, LocalCharacterModel)
+	if not IsJailbirdPlaceBoolean or not EspEnabledBoolean or not JailbirdGrenadeEspEnabledBoolean or not Camera then
+		self:HideAll()
+		return
+	end
+
+	for GrenadeModel in pairs(self.trackedByModel) do
+		if not GrenadeModel or not GrenadeModel.Parent then
+			self:RemoveGrenadeDrawings(GrenadeModel)
+		end
+	end
+
+	for _, GrenadeModel in ipairs(self:GetActiveGrenades()) do
+		self:UpdateGrenade(GrenadeModel, LocalCharacterModel)
+	end
+
+	for _, DrawingSet in pairs(self.trackedByModel) do
 		if DrawingSet.lastSeenFrame ~= CurrentFrameSequenceNumber then
 			self:HideDrawingSet(DrawingSet)
 		end
@@ -9985,6 +10511,7 @@ RunService.RenderStepped.Connect(RunService.RenderStepped, function()
 	end
 
 	EspRuntimeTable:Update(LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
+	JailbirdGrenadeEspRuntimeTable:Update(LocalCharacterModel)
 
 	if CurrentTargetPartInstance and IsCharacterAlive(CurrentTargetCharacterModel) then
 		local TargetPositionVector3 = GetCurrentEffectiveAimPointVector3()
