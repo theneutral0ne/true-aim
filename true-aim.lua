@@ -141,10 +141,13 @@ JailbirdVisibilityRuntimeTable = {
 }
 LostFrontTeamRuntimeTable = {
 	teamsByPlayer = setmetatable({}, { __mode = "k" }),
+	charactersByPlayer = setmetatable({}, { __mode = "k" }),
 	revision = 0,
 	loading = false,
 	lastLoadTime = 0,
 	connection = nil,
+	deployedConnection = nil,
+	diedConnection = nil,
 }
 
 
@@ -167,7 +170,7 @@ local GameIntegrationProfilesByPlaceIdTable = {
 		id = "lostfront",
 		usesCustomTeam = true,
 		visibilityIgnoreWorkspaceFolder = true,
-		cameraRenderPriorityOffset = 2,
+		cameraRenderPriority = Enum.RenderPriority.Last.Value,
 	},
 }
 CurrentGameIntegrationProfileTable = GameIntegrationProfilesByPlaceIdTable[game.PlaceId]
@@ -223,15 +226,54 @@ local function SetLostFrontPlayerTeam(PlayerObject, TeamValue)
 	LostFrontTeamRuntimeTable.teamsByPlayer[PlayerObject] = TeamString
 end
 
+function LostFrontTeamRuntimeTable.SetPlayerSpawnData(PlayerObject, SpawnData)
+	if not PlayerObject then
+		return
+	end
+
+	local CharacterModel = nil
+	if type(SpawnData) == "table" then
+		CharacterModel = SpawnData.character
+	elseif typeof(SpawnData) == "Instance" then
+		CharacterModel = SpawnData
+	end
+
+	if LostFrontTeamRuntimeTable.charactersByPlayer[PlayerObject] ~= CharacterModel then
+		LostFrontTeamRuntimeTable.revision = LostFrontTeamRuntimeTable.revision + 1
+	end
+	LostFrontTeamRuntimeTable.charactersByPlayer[PlayerObject] = CharacterModel
+end
+
+function LostFrontTeamRuntimeTable.ClearPlayerSpawnData(PlayerObject)
+	if not PlayerObject then
+		return
+	end
+
+	if LostFrontTeamRuntimeTable.charactersByPlayer[PlayerObject] ~= nil then
+		LostFrontTeamRuntimeTable.revision = LostFrontTeamRuntimeTable.revision + 1
+	end
+	LostFrontTeamRuntimeTable.charactersByPlayer[PlayerObject] = nil
+end
+
 local function EnsureLostFrontTeamConnection()
-	if not IsLostFrontPlaceBoolean or LostFrontTeamRuntimeTable.connection then
+	if not IsLostFrontPlaceBoolean then
 		return
 	end
 
 	local NetworkFolder = ReplicatedStorageService.FindFirstChild(ReplicatedStorageService, "network")
 	local JoinedTeamRemoteEvent = NetworkFolder and NetworkFolder.FindFirstChild(NetworkFolder, "joinedTeam") or nil
-	if JoinedTeamRemoteEvent and JoinedTeamRemoteEvent.OnClientEvent then
+	if not LostFrontTeamRuntimeTable.connection and JoinedTeamRemoteEvent and JoinedTeamRemoteEvent.OnClientEvent then
 		LostFrontTeamRuntimeTable.connection = JoinedTeamRemoteEvent.OnClientEvent:Connect(SetLostFrontPlayerTeam)
+	end
+
+	local ClientDeployedRemoteEvent = NetworkFolder and NetworkFolder.FindFirstChild(NetworkFolder, "clientDeployed") or nil
+	if not LostFrontTeamRuntimeTable.deployedConnection and ClientDeployedRemoteEvent and ClientDeployedRemoteEvent.OnClientEvent then
+		LostFrontTeamRuntimeTable.deployedConnection = ClientDeployedRemoteEvent.OnClientEvent:Connect(LostFrontTeamRuntimeTable.SetPlayerSpawnData)
+	end
+
+	local ClientDiedRemoteEvent = NetworkFolder and NetworkFolder.FindFirstChild(NetworkFolder, "clientDied") or nil
+	if not LostFrontTeamRuntimeTable.diedConnection and ClientDiedRemoteEvent and ClientDiedRemoteEvent.OnClientEvent then
+		LostFrontTeamRuntimeTable.diedConnection = ClientDiedRemoteEvent.OnClientEvent:Connect(LostFrontTeamRuntimeTable.ClearPlayerSpawnData)
 	end
 end
 
@@ -262,6 +304,9 @@ function LostFrontTeamRuntimeTable.TryLoad()
 						or Players.FindFirstChild(Players, tostring(PlayerKey))
 					if PlayerObject and type(PlayerData) == "table" then
 						SetLostFrontPlayerTeam(PlayerObject, PlayerData.team)
+						if PlayerData.spawndata then
+							LostFrontTeamRuntimeTable.SetPlayerSpawnData(PlayerObject, PlayerData.spawndata)
+						end
 					end
 				end
 			end
@@ -284,6 +329,19 @@ function LostFrontTeamRuntimeTable.IsFriendly(PlayerObject, LocalTeamString)
 		and PlayerObject ~= nil
 		and type(LocalTeamString) == "string"
 		and LostFrontTeamRuntimeTable.teamsByPlayer[PlayerObject] == LocalTeamString
+end
+
+function LostFrontTeamRuntimeTable.GetCharacter(PlayerObject)
+	if not IsLostFrontPlaceBoolean or not PlayerObject then
+		return nil
+	end
+
+	local CharacterModel = LostFrontTeamRuntimeTable.charactersByPlayer[PlayerObject]
+	if CharacterModel and CharacterModel.Parent then
+		return CharacterModel
+	end
+
+	return nil
 end
 
 if IsLostFrontPlaceBoolean then
@@ -1864,6 +1922,13 @@ local function ResolveCharacterModelForPlayer(PlayerObject)
 		local PlayerCharacter = PlayerObject.Character
 		if IsHumanoidCharacterModel(PlayerCharacter) then
 			ResolvedCharacterModel = PlayerCharacter
+		end
+	end
+
+	if not ResolvedCharacterModel and IsLostFrontPlaceBoolean then
+		local LostFrontCharacterModel = LostFrontTeamRuntimeTable.GetCharacter(PlayerObject)
+		if IsHumanoidCharacterModel(LostFrontCharacterModel) then
+			ResolvedCharacterModel = LostFrontCharacterModel
 		end
 	end
 
@@ -5844,6 +5909,14 @@ local function FindPlayerForCharacterModel(CharacterModel)
 		return MatchingPlayerObject
 	end
 
+	if IsLostFrontPlaceBoolean then
+		for _, PlayerObject in ipairs(Players.GetPlayers(Players)) do
+			if LostFrontTeamRuntimeTable.GetCharacter(PlayerObject) == CharacterModel then
+				return PlayerObject
+			end
+		end
+	end
+
 	if IsCustomCharacterGameBoolean then
 		for _, PlayerObject in ipairs(Players.GetPlayers(Players)) do
 			if FindCustomCharacterForPlayer(PlayerObject) == CharacterModel then
@@ -9536,6 +9609,60 @@ function ShieldModeRuntimeTable.IsHookOnlyMethodEnabled()
 	return IsEffectiveHookMethodEnabled() and not IsEffectiveCameraMethodEnabled()
 end
 
+function ShieldModeRuntimeTable.GetLostFrontRaycastRedirect(OriginVector3, DirectionVector3)
+	if not IsLostFrontPlaceBoolean
+		or typeof(OriginVector3) ~= "Vector3"
+		or typeof(DirectionVector3) ~= "Vector3"
+		or DirectionVector3.Magnitude <= 0.001 then
+		return nil
+	end
+
+	local TargetPositionVector3 = GetCurrentEffectiveAimPointVector3()
+		or (CurrentTargetPartInstance and CurrentTargetPartInstance.Parent and CurrentTargetPartInstance.Position)
+	if typeof(TargetPositionVector3) ~= "Vector3" then
+		return nil
+	end
+
+	local RedirectVector3 = TargetPositionVector3 - OriginVector3
+	if RedirectVector3.Magnitude <= 0.001 then
+		return nil
+	end
+
+	return RedirectVector3.Unit * DirectionVector3.Magnitude
+end
+
+function ShieldModeRuntimeTable.ApplyLostFrontCameraAim()
+	if not IsLostFrontPlaceBoolean
+		or not IsEffectiveCameraMethodEnabled()
+		or not CurrentTargetPartInstance
+		or not CurrentTargetCharacterModel
+		or not CurrentTargetPartInstance.Parent
+		or not IsCharacterAlive(CurrentTargetCharacterModel) then
+		return
+	end
+
+	if AimbotRequireRmbBoolean and not ShieldModeRuntimeTable.IsLockKeyHeld() then
+		return
+	end
+
+	local ActiveCamera = WorkspaceService.CurrentCamera or Camera
+	local TargetPositionVector3 = GetCurrentEffectiveAimPointVector3()
+	if not ActiveCamera or typeof(TargetPositionVector3) ~= "Vector3" then
+		return
+	end
+
+	local CameraPositionVector3 = ActiveCamera.CFrame.Position
+	local DirectionVector3 = TargetPositionVector3 - CameraPositionVector3
+	if DirectionVector3.Magnitude <= 0.001 then
+		return
+	end
+
+	Camera = ActiveCamera
+	local CurrentLookVector = ActiveCamera.CFrame.LookVector
+	local SmoothedLookVector = CurrentLookVector:Lerp(DirectionVector3.Unit, AimbotSmoothingNumber)
+	ActiveCamera.CFrame = CFrame.new(CameraPositionVector3, CameraPositionVector3 + SmoothedLookVector)
+end
+
 function ShieldModeRuntimeTable.GetFireGunMuzzleRedirect(ActiveFiringLocalGunTable, TargetPositionVector3, FallbackOriginVector3, DirectionMagnitudeNumber)
 	if type(ActiveFiringLocalGunTable) ~= "table"
 		or typeof(TargetPositionVector3) ~= "Vector3"
@@ -9651,6 +9778,14 @@ ShieldModeRuntimeTable.oldNamecall = hookmetamethod(game, "__namecall", function
 		if typeof(Origin) == "Vector3"
 			and typeof(Direction) == "Vector3"
 			and Direction.Magnitude > 0.001 then
+			if IsLostFrontPlaceBoolean then
+				local LostFrontRedirectDirectionVector3 = ShieldModeRuntimeTable.GetLostFrontRaycastRedirect(Origin, Direction)
+				if LostFrontRedirectDirectionVector3 then
+					Args[2] = LostFrontRedirectDirectionVector3
+				end
+				return ShieldModeRuntimeTable.oldNamecall(Self, unpack(Args))
+			end
+
 			local TargetPosition = GetCurrentEffectiveAimPointVector3() or CurrentTargetPartInstance.Position
 			local ActiveFiringLocalGunTable = ShieldModeRuntimeTable.activeFiringLocalGun
 			if IsBloodZonePlaceBoolean
@@ -9710,7 +9845,9 @@ end)
 
 pcall(RunService.UnbindFromRenderStep, RunService, "TrueAimMainLoop")
 local MainLoopRenderPriorityNumber = Enum.RenderPriority.Camera.Value + 1
-if CurrentGameIntegrationProfileTable and type(CurrentGameIntegrationProfileTable.cameraRenderPriorityOffset) == "number" then
+if CurrentGameIntegrationProfileTable and type(CurrentGameIntegrationProfileTable.cameraRenderPriority) == "number" then
+	MainLoopRenderPriorityNumber = CurrentGameIntegrationProfileTable.cameraRenderPriority
+elseif CurrentGameIntegrationProfileTable and type(CurrentGameIntegrationProfileTable.cameraRenderPriorityOffset) == "number" then
 	MainLoopRenderPriorityNumber = Enum.RenderPriority.Camera.Value + CurrentGameIntegrationProfileTable.cameraRenderPriorityOffset
 end
 RunService.BindToRenderStep(RunService, "TrueAimMainLoop", MainLoopRenderPriorityNumber, function()
@@ -10151,7 +10288,9 @@ RunService.BindToRenderStep(RunService, "TrueAimMainLoop", MainLoopRenderPriorit
 			ShouldAimbotBoolean = ShieldModeRuntimeTable.IsLockKeyHeld()
 		end
 
-		if ShouldAimbotBoolean and IsEffectiveCameraMethodEnabled() then
+		if ShouldAimbotBoolean and IsEffectiveCameraMethodEnabled() and IsLostFrontPlaceBoolean then
+			ShieldModeRuntimeTable.ApplyLostFrontCameraAim()
+		elseif ShouldAimbotBoolean and IsEffectiveCameraMethodEnabled() then
 			local ActiveCamera = WorkspaceService.CurrentCamera or Camera
 			if ActiveCamera then
 				Camera = ActiveCamera
