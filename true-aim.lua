@@ -320,14 +320,21 @@ JailbirdGrenadeEspRuntimeTable = {
 	runtimeDataByModel = setmetatable({}, { __mode = "k" }),
 	trackingConnections = {},
 	trackingReady = false,
+	mapInstance = nil,
+	mapChildAddedConnection = nil,
 	lastScanTime = 0,
-	scanInterval = 0.75,
+	scanInterval = 0.5,
 	expiredFuseGraceTime = 0.75,
 	maxTrajectoryLineCount = 18,
 	maxAoeLineCount = 32,
 	trajectoryStepTime = 0.12,
 	defaultPredictionTime = 2.5,
 	maxPredictionTime = 5,
+	throwableGravityStrength = 0.7,
+	throwableInitialGravityScale = 0.25,
+	throwableFinalGravityScale = 0.5,
+	throwableGravityBlendExponent = 1.01,
+	throwableGravityBlendDuration = 10,
 	defaultRange = 10,
 	defaultProximity = nil,
 	grenadeNames = {
@@ -360,6 +367,19 @@ JailbirdGrenadeEspRuntimeTable = {
 		"CreatedAt",
 		"SpawnedAt",
 		"Exploded",
+		"Owner",
+		"ThrowSerial",
+		"StickResolved",
+		"ImpactResolved",
+		"StickyFinalizationPending",
+		"SimulatedThrowableActive",
+		"SimulatedThrowableX",
+		"SimulatedThrowableY",
+		"SimulatedThrowableZ",
+		"SimulatedThrowableVelocityX",
+		"SimulatedThrowableVelocityY",
+		"SimulatedThrowableVelocityZ",
+		"SimulatedThrowableSpeed",
 	},
 	blastRadiusNames = {
 		["Frag Grenade"] = true,
@@ -368,6 +388,10 @@ JailbirdGrenadeEspRuntimeTable = {
 		["Gas Grenade"] = true,
 		["Molotov"] = true,
 		["Tear Gas"] = true,
+	},
+	stickyNames = {
+		["Sticky Grenade"] = true,
+		["Proximity Alarm"] = true,
 	},
 }
 PlayerListEntryStateCacheDurationNumber = CurrentGameIntegrationPlayerListEntryCacheDurationNumber
@@ -8898,8 +8922,56 @@ JailbirdGrenadeEspRuntimeTable.IsGrenadeModel = function(self, InstanceObject)
 	return false
 end
 
+JailbirdGrenadeEspRuntimeTable.GetMapInstance = function(self)
+	local MapInstance = self.mapInstance
+	if MapInstance and MapInstance.Parent then
+		return MapInstance
+	end
+	MapInstance = WorkspaceService.FindFirstChild(WorkspaceService, "Map")
+	self.mapInstance = MapInstance
+	return MapInstance
+end
+
+JailbirdGrenadeEspRuntimeTable.BindMapTracking = function(self, MapInstance)
+	if not MapInstance or self.boundMapInstance == MapInstance then
+		return
+	end
+	if self.mapChildAddedConnection then
+		self.mapChildAddedConnection.Disconnect(self.mapChildAddedConnection)
+		self.mapChildAddedConnection = nil
+	end
+	self.boundMapInstance = MapInstance
+	for _, ChildInstance in ipairs(MapInstance.GetChildren(MapInstance)) do
+		self:TrackCandidate(ChildInstance)
+	end
+	self.mapChildAddedConnection = MapInstance.ChildAdded.Connect(MapInstance.ChildAdded, function(ChildInstance)
+		JailbirdGrenadeEspRuntimeTable.TrackCandidate(JailbirdGrenadeEspRuntimeTable, ChildInstance)
+	end)
+	self.trackingConnections[#self.trackingConnections + 1] = self.mapChildAddedConnection
+end
+
+JailbirdGrenadeEspRuntimeTable.IsStickyThrowable = function(self, GrenadeModel)
+	if not GrenadeModel or not GrenadeModel.IsA or not GrenadeModel.IsA(GrenadeModel, "Model") then
+		return false
+	end
+	for StickyNameString in pairs(self.stickyNames) do
+		if SafeHasCollectionTag(GrenadeModel, StickyNameString) then
+			return true
+		end
+	end
+	return self.stickyNames[GrenadeModel.Name] == true
+end
+
 JailbirdGrenadeEspRuntimeTable.HasThrowableRuntimeData = function(self, GrenadeModel, BasePart)
 	if self.runtimeDataByModel[GrenadeModel] == true then
+		return true
+	end
+	if self:IsStickyThrowable(GrenadeModel) and GrenadeModel.GetAttribute(GrenadeModel, "Owner") ~= nil then
+		self.runtimeDataByModel[GrenadeModel] = true
+		return true
+	end
+	if GrenadeModel.GetAttribute(GrenadeModel, "ThrowSerial") ~= nil then
+		self.runtimeDataByModel[GrenadeModel] = true
 		return true
 	end
 	local AttributeNamesTable = self.runtimeAttributeNames
@@ -8930,6 +9002,10 @@ end
 
 JailbirdGrenadeEspRuntimeTable.IsWorldThrowableModel = function(self, GrenadeModel)
 	if not GrenadeModel or not GrenadeModel.Parent then
+		return false
+	end
+	local MapInstance = self:GetMapInstance()
+	if not MapInstance or GrenadeModel.Parent ~= MapInstance then
 		return false
 	end
 	local CharactersFolder = GetCharactersFolder()
@@ -8966,30 +9042,38 @@ JailbirdGrenadeEspRuntimeTable.SetupTracking = function(self)
 	end
 	self.trackingReady = true
 
-	for _, DescendantInstance in ipairs(WorkspaceService.GetDescendants(WorkspaceService)) do
-		self:TrackCandidate(DescendantInstance)
+	local MapInstance = self:GetMapInstance()
+	if MapInstance then
+		self:BindMapTracking(MapInstance)
 	end
 
-	local AddedConnection = WorkspaceService.DescendantAdded.Connect(WorkspaceService.DescendantAdded, function(DescendantInstance)
-		JailbirdGrenadeEspRuntimeTable.TrackCandidate(JailbirdGrenadeEspRuntimeTable, DescendantInstance)
+	local AddedConnection = WorkspaceService.ChildAdded.Connect(WorkspaceService.ChildAdded, function(ChildInstance)
+		if ChildInstance.Name == "Map" then
+			JailbirdGrenadeEspRuntimeTable.mapInstance = ChildInstance
+			JailbirdGrenadeEspRuntimeTable.BindMapTracking(JailbirdGrenadeEspRuntimeTable, ChildInstance)
+			JailbirdGrenadeEspRuntimeTable.RefreshActiveGrenades(JailbirdGrenadeEspRuntimeTable, 0, true)
+		end
 	end)
 	local RemovingConnection = WorkspaceService.DescendantRemoving.Connect(WorkspaceService.DescendantRemoving, function(DescendantInstance)
 		if JailbirdGrenadeEspRuntimeTable.activeByModel[DescendantInstance] then
-			JailbirdGrenadeEspRuntimeTable.activeByModel[DescendantInstance] = nil
-			JailbirdGrenadeEspRuntimeTable.RemoveGrenadeDrawings(JailbirdGrenadeEspRuntimeTable, DescendantInstance)
+			JailbirdGrenadeEspRuntimeTable.RemoveActiveGrenade(JailbirdGrenadeEspRuntimeTable, DescendantInstance)
 		end
 	end)
 	self.trackingConnections[#self.trackingConnections + 1] = AddedConnection
 	self.trackingConnections[#self.trackingConnections + 1] = RemovingConnection
 end
 
-JailbirdGrenadeEspRuntimeTable.RefreshActiveGrenades = function(self, NowNumber)
-	if (NowNumber - (self.lastScanTime or 0)) < (self.scanInterval or 0.25) then
+JailbirdGrenadeEspRuntimeTable.RefreshActiveGrenades = function(self, NowNumber, ForceBoolean)
+	if not ForceBoolean and (NowNumber - (self.lastScanTime or 0)) < (self.scanInterval or 0.25) then
 		return
 	end
 	self.lastScanTime = NowNumber
-	for _, DescendantInstance in ipairs(WorkspaceService.GetDescendants(WorkspaceService)) do
-		self:TrackCandidate(DescendantInstance)
+	local MapInstance = self:GetMapInstance()
+	if not MapInstance then
+		return
+	end
+	for _, ChildInstance in ipairs(MapInstance.GetChildren(MapInstance)) do
+		self:TrackCandidate(ChildInstance)
 	end
 end
 
@@ -9009,7 +9093,7 @@ JailbirdGrenadeEspRuntimeTable.GetGrenadeBasePart = function(self, GrenadeModel)
 	if PrimaryPart and PrimaryPart.IsA(PrimaryPart, "BasePart") then
 		return PrimaryPart
 	end
-	return GrenadeModel.FindFirstChildWhichIsA(GrenadeModel, "BasePart", true)
+	return nil
 end
 
 JailbirdGrenadeEspRuntimeTable.GetNumberAttribute = function(self, InstanceObject, AttributeNameString, DefaultNumber)
@@ -9039,6 +9123,29 @@ JailbirdGrenadeEspRuntimeTable.GetGrenadeNumber = function(self, GrenadeModel, B
 		end
 	end
 	return DefaultNumber
+end
+
+JailbirdGrenadeEspRuntimeTable.GetThrowableVelocity = function(self, GrenadeModel, BasePart)
+	local VelocityVector3 = SafeGetBasePartAssemblyLinearVelocity(BasePart) or Vector3.new(0, 0, 0)
+	if GrenadeModel and GrenadeModel.GetAttribute and GrenadeModel.GetAttribute(GrenadeModel, "SimulatedThrowableActive") == true then
+		local VelocityXNumber = self:GetGrenadeNumber(GrenadeModel, BasePart, "SimulatedThrowableVelocityX", VelocityVector3.X)
+		local VelocityYNumber = self:GetGrenadeNumber(GrenadeModel, BasePart, "SimulatedThrowableVelocityY", VelocityVector3.Y)
+		local VelocityZNumber = self:GetGrenadeNumber(GrenadeModel, BasePart, "SimulatedThrowableVelocityZ", VelocityVector3.Z)
+		VelocityVector3 = Vector3.new(VelocityXNumber, VelocityYNumber, VelocityZNumber)
+	end
+	return VelocityVector3
+end
+
+JailbirdGrenadeEspRuntimeTable.GetThrowablePosition = function(self, GrenadeModel, BasePart)
+	if GrenadeModel and GrenadeModel.GetAttribute and GrenadeModel.GetAttribute(GrenadeModel, "SimulatedThrowableActive") == true then
+		local PositionXNumber = self:GetGrenadeNumber(GrenadeModel, BasePart, "SimulatedThrowableX", nil)
+		local PositionYNumber = self:GetGrenadeNumber(GrenadeModel, BasePart, "SimulatedThrowableY", nil)
+		local PositionZNumber = self:GetGrenadeNumber(GrenadeModel, BasePart, "SimulatedThrowableZ", nil)
+		if type(PositionXNumber) == "number" and type(PositionYNumber) == "number" and type(PositionZNumber) == "number" then
+			return Vector3.new(PositionXNumber, PositionYNumber, PositionZNumber)
+		end
+	end
+	return BasePart.Position
 end
 
 JailbirdGrenadeEspRuntimeTable.GetFuseRemaining = function(self, GrenadeModel, BasePart, DrawingSet, NowNumber)
@@ -9078,6 +9185,13 @@ JailbirdGrenadeEspRuntimeTable.IsGrenadeExpired = function(self, GrenadeModel, B
 	if BasePart and BasePart.GetAttribute and BasePart.GetAttribute(BasePart, "Exploded") == true then
 		return true
 	end
+	if GrenadeModel and GrenadeModel.GetAttribute and GrenadeModel.GetAttribute(GrenadeModel, "Destroyed") == true then
+		return true
+	end
+	if GrenadeModel and GrenadeModel.GetAttribute and GrenadeModel.GetAttribute(GrenadeModel, "ImpactResolved") == true and not self:IsStickyThrowable(GrenadeModel) then
+		DrawingSet.impactResolvedTime = DrawingSet.impactResolvedTime or NowNumber
+		return (NowNumber - DrawingSet.impactResolvedTime) > 0.15
+	end
 	if type(FuseRemainingNumber) ~= "number" then
 		DrawingSet.fuseExpiredTime = nil
 		return false
@@ -9090,18 +9204,39 @@ JailbirdGrenadeEspRuntimeTable.IsGrenadeExpired = function(self, GrenadeModel, B
 	return (NowNumber - DrawingSet.fuseExpiredTime) > (self.expiredFuseGraceTime or 0.75)
 end
 
+JailbirdGrenadeEspRuntimeTable.IsThrowableStationary = function(self, GrenadeModel, BasePart, VelocityVector3)
+	if GrenadeModel and GrenadeModel.GetAttribute and GrenadeModel.GetAttribute(GrenadeModel, "StickResolved") == true then
+		return true
+	end
+	return BasePart.Anchored or VelocityVector3.Magnitude < 0.75
+end
+
+JailbirdGrenadeEspRuntimeTable.GetGravityScaleAtTime = function(self, TimeNumber)
+	local BlendAlphaNumber = math.clamp((TimeNumber or 0) / (self.throwableGravityBlendDuration or 10), 0, 1) ^ (self.throwableGravityBlendExponent or 1.01)
+	local InitialScaleNumber = self.throwableInitialGravityScale or 0.25
+	local FinalScaleNumber = self.throwableFinalGravityScale or 0.5
+	return InitialScaleNumber + ((FinalScaleNumber - InitialScaleNumber) * BlendAlphaNumber)
+end
+
+JailbirdGrenadeEspRuntimeTable.AdvanceTrajectoryState = function(self, PositionVector3, VelocityVector3, GravityNumber, StepTimeNumber, ElapsedTimeNumber)
+	local GravityScaleNumber = self:GetGravityScaleAtTime((ElapsedTimeNumber or 0) + ((StepTimeNumber or 0) * 0.5))
+	local GravityVector3 = Vector3.new(0, -GravityNumber * GravityScaleNumber, 0)
+	return PositionVector3 + (VelocityVector3 * StepTimeNumber) + (GravityVector3 * (0.5 * StepTimeNumber * StepTimeNumber)), VelocityVector3 + (GravityVector3 * StepTimeNumber)
+end
+
 JailbirdGrenadeEspRuntimeTable.GetTrajectoryPoints = function(self, GrenadeModel, StartPositionVector3, StartVelocityVector3, TimeWindowNumber)
 	local PointsTable = {}
-	local GravityNumber = tonumber(WorkspaceService.Gravity) or 196.2
+	local GravityNumber = (tonumber(WorkspaceService.Gravity) or 196.2) * (self.throwableGravityStrength or 0.7)
 	local StepTimeNumber = self.trajectoryStepTime or 0.12
 	local SegmentCountNumber = math.min(self.maxTrajectoryLineCount + 1, math.max(2, math.floor(TimeWindowNumber / StepTimeNumber) + 1))
 	local IgnoredInstancesTable = {}
 	AppendUniqueIgnoredInstance(IgnoredInstancesTable, GrenadeModel)
+	local PositionVector3 = StartPositionVector3
+	local VelocityVector3 = StartVelocityVector3
 	for PointIndex = 1, SegmentCountNumber do
-		local TimeNumber = (PointIndex - 1) * StepTimeNumber
-		local PositionVector3 = StartPositionVector3
-			+ (StartVelocityVector3 * TimeNumber)
-			+ Vector3.new(0, -0.5 * GravityNumber * TimeNumber * TimeNumber, 0)
+		if PointIndex > 1 then
+			PositionVector3, VelocityVector3 = self:AdvanceTrajectoryState(PositionVector3, VelocityVector3, GravityNumber, StepTimeNumber, (PointIndex - 2) * StepTimeNumber)
+		end
 		local PreviousPositionVector3 = PointsTable[#PointsTable]
 		if PreviousPositionVector3 then
 			local SegmentVector3 = PositionVector3 - PreviousPositionVector3
@@ -9278,12 +9413,12 @@ JailbirdGrenadeEspRuntimeTable.DrawTrajectory = function(self, DrawingSet, Point
 	end
 end
 
-JailbirdGrenadeEspRuntimeTable.UpdateInfoText = function(self, DrawingSet, GrenadeModel, BasePart, FuseRemainingNumber, DamageNumber, DistanceNumber, DangerColor3)
+JailbirdGrenadeEspRuntimeTable.UpdateInfoText = function(self, DrawingSet, GrenadeModel, PositionVector3, FuseRemainingNumber, DamageNumber, DistanceNumber, DangerColor3)
 	local TextObject = DrawingSet.infoText
 	if not TextObject then
 		return
 	end
-	local ScreenPointVector2, OnScreenBoolean = self:ProjectWorldPoint(BasePart.Position + Vector3.new(0, 2, 0))
+	local ScreenPointVector2, OnScreenBoolean = self:ProjectWorldPoint(PositionVector3 + Vector3.new(0, 2, 0))
 	if not ScreenPointVector2 or not OnScreenBoolean then
 		TextObject.Visible = false
 		return
@@ -9336,15 +9471,16 @@ JailbirdGrenadeEspRuntimeTable.UpdateGrenade = function(self, GrenadeModel, Loca
 		self:RemoveActiveGrenade(GrenadeModel)
 		return
 	end
-	local VelocityVector3 = SafeGetBasePartAssemblyLinearVelocity(BasePart) or Vector3.new(0, 0, 0)
+	local PositionVector3 = self:GetThrowablePosition(GrenadeModel, BasePart)
+	local VelocityVector3 = self:GetThrowableVelocity(GrenadeModel, BasePart)
 	local TimeWindowNumber = math.clamp(FuseRemainingNumber or self.defaultPredictionTime, 0.4, self.maxPredictionTime)
 	local PointsTable
-	if BasePart.Anchored or VelocityVector3.Magnitude < 0.75 then
-		PointsTable = { BasePart.Position }
+	if self:IsThrowableStationary(GrenadeModel, BasePart, VelocityVector3) then
+		PointsTable = { PositionVector3 }
 	else
-		PointsTable = self:GetTrajectoryPoints(GrenadeModel, BasePart.Position, VelocityVector3, TimeWindowNumber)
+		PointsTable = self:GetTrajectoryPoints(GrenadeModel, PositionVector3, VelocityVector3, TimeWindowNumber)
 	end
-	local ExplosionPositionVector3 = PointsTable[#PointsTable] or BasePart.Position
+	local ExplosionPositionVector3 = PointsTable[#PointsTable] or PositionVector3
 	local DamageNumber, CanDamageBoolean, DistanceNumber, RadiusNumber = self:EstimateSelfDamage(GrenadeModel, BasePart, ExplosionPositionVector3, LocalCharacterModel)
 	local DangerColor3 = CanDamageBoolean and DamageNumber > 0 and Color3.fromRGB(255, 75, 55) or Color3.fromRGB(255, 190, 90)
 
@@ -9354,7 +9490,7 @@ JailbirdGrenadeEspRuntimeTable.UpdateGrenade = function(self, GrenadeModel, Loca
 	else
 		self:HideAoeRing(DrawingSet)
 	end
-	self:UpdateInfoText(DrawingSet, GrenadeModel, BasePart, FuseRemainingNumber, DamageNumber, DistanceNumber, DangerColor3)
+	self:UpdateInfoText(DrawingSet, GrenadeModel, PositionVector3, FuseRemainingNumber, DamageNumber, DistanceNumber, DangerColor3)
 	DrawingSet.lastSeenFrame = CurrentFrameSequenceNumber
 end
 
