@@ -9,7 +9,7 @@ local TweenService = game.GetService(game, "TweenService")
 local VirtualInputManager = game.GetService(game, "VirtualInputManager")
 local HttpService = game.GetService(game, "HttpService")
 
-TrueAimScriptVersionString = "1.0.6"
+TrueAimScriptVersionString = "1.0.7"
 print("[True Aim] Script version " .. TrueAimScriptVersionString)
 
 local LocalPlayer = Players.LocalPlayer
@@ -180,6 +180,8 @@ local GameIntegrationProfilesByPlaceIdTable = {
 		usesCustomTeam = true,
 		visibilityIgnoreWorkspaceFolder = true,
 		cameraRenderPriority = Enum.RenderPriority.Camera.Value - 1,
+		bulletSpeed = 1000,
+		bulletGravityScale = 1 / 8,
 	},
 }
 CurrentGameIntegrationProfileTable = GameIntegrationProfilesByPlaceIdTable[game.PlaceId]
@@ -582,6 +584,7 @@ local ShieldModeRuntimeTable: { [string]: any } = {
 	lostFrontPendingShotTargetPoint = nil,
 	lostFrontPendingShotExpiresAt = 0,
 	lostFrontPendingShotCaster = nil,
+	lostFrontActiveWeaponController = nil,
 	heldItemStateCacheDuration = 0.2,
 	GetBloodZoneHeldItemState = nil,
 }
@@ -9657,6 +9660,7 @@ function ShieldModeRuntimeTable.EnsureLostFrontWeaponFireHook()
 		local OriginalWeaponFireFunction
 		local HookSuccessBoolean, HookedOriginalFunction = pcall(function()
 			return hookfunction(WeaponFireFunction, function(WeaponController, ...)
+				ShieldModeRuntimeTable.lostFrontActiveWeaponController = WeaponController
 				if IsEffectiveHookMethodEnabled() then
 					local LocalCharacterModel = CurrentFrameLocalCharacterModel
 					if not CurrentFrameLocalCharacterReadyBoolean then
@@ -9776,6 +9780,46 @@ function ShieldModeRuntimeTable.ResetLostFrontCameraAim()
 	CameraRuntimeTable.pendingMouseDelta = Vector2.zero
 end
 
+function ShieldModeRuntimeTable.GetLostFrontCameraPredictedAimPoint(ActiveCamera, TargetCharacterModel, TargetPartInstance, TargetPointVector3)
+	if not IsLostFrontPlaceBoolean
+		or not ActiveCamera
+		or typeof(TargetPointVector3) ~= "Vector3" then
+		return TargetPointVector3
+	end
+
+	local ProfileTable = CurrentGameIntegrationProfileTable or {}
+	local WeaponControllerTable = ShieldModeRuntimeTable.lostFrontActiveWeaponController
+	local WeaponStatsTable = type(WeaponControllerTable) == "table" and WeaponControllerTable.stats or nil
+	local ProjectileSpeedNumber = tonumber(WeaponStatsTable and WeaponStatsTable.bullet_speed)
+		or tonumber(ProfileTable.bulletSpeed)
+	local BulletGravityVector3 = WeaponStatsTable and WeaponStatsTable.bullet_gravity or nil
+	local GravityNumber = typeof(BulletGravityVector3) == "Vector3"
+		and math.max(0, -BulletGravityVector3.Y)
+		or ((WorkspaceService and WorkspaceService.Gravity) or 196.2) * (tonumber(ProfileTable.bulletGravityScale) or 0)
+	if type(ProjectileSpeedNumber) ~= "number" or ProjectileSpeedNumber <= 0.001 then
+		return TargetPointVector3
+	end
+
+	local TargetVelocityVector3 = GetCharacterVelocityVector3(TargetCharacterModel, TargetPartInstance)
+	local MaximumTravelTimeNumber = 2
+	if type(WeaponStatsTable) == "table" then
+		local MaximumDistanceNumber = tonumber(WeaponStatsTable.bullet_distance)
+		if type(MaximumDistanceNumber) == "number" and MaximumDistanceNumber > 0 then
+			MaximumTravelTimeNumber = math.max(0.05, MaximumDistanceNumber / ProjectileSpeedNumber)
+		end
+	end
+	local PredictedAimPointVector3 = SolveProjectileAimPointVector3(
+		ActiveCamera.CFrame.Position,
+		TargetPointVector3,
+		TargetVelocityVector3,
+		ProjectileSpeedNumber,
+		GravityNumber,
+		MaximumTravelTimeNumber,
+		false
+	)
+	return typeof(PredictedAimPointVector3) == "Vector3" and PredictedAimPointVector3 or TargetPointVector3
+end
+
 function ShieldModeRuntimeTable.ApplyLostFrontCameraAim(DeltaTimeNumber)
 	local CameraRuntimeTable = LostFrontCameraRuntimeTable
 	local ActiveCamera = WorkspaceService.CurrentCamera or Camera
@@ -9803,6 +9847,12 @@ function ShieldModeRuntimeTable.ApplyLostFrontCameraAim(DeltaTimeNumber)
 		ShieldModeRuntimeTable.ResetLostFrontCameraAim()
 		return
 	end
+	TargetPositionVector3 = ShieldModeRuntimeTable.GetLostFrontCameraPredictedAimPoint(
+		ActiveCamera,
+		CurrentTargetCharacterModel,
+		CurrentTargetPartInstance,
+		TargetPositionVector3
+	)
 
 	local TargetViewportPositionVector3, TargetOnScreenBoolean = ActiveCamera.WorldToViewportPoint(ActiveCamera, TargetPositionVector3)
 	if not TargetOnScreenBoolean or TargetViewportPositionVector3.Z <= 0 then
