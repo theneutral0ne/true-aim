@@ -7229,13 +7229,15 @@ task.defer(function()
 	SetNormalHookHitChanceFromRatio(DefaultNormalHookHitChanceRatioNumber)
 end)
 
-local MenuIsOpenBoolean = true
-local MenuOpenPosition = MenuFrame.Position
-local PlayerListOpenPosition = PlayerListRuntimeTable.frame.Position
-local MenuClosedPosition = UDim2.new(MenuOpenPosition.X.Scale, MenuOpenPosition.X.Offset, MenuOpenPosition.Y.Scale, MenuOpenPosition.Y.Offset - 150)
-local MenuTweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local MenuHasCustomPositionBoolean = false
-local PlayerListHasCustomPositionBoolean = false
+local MenuRuntimeTable = {
+	isOpen = true,
+	openPosition = MenuFrame.Position,
+	playerListOpenPosition = PlayerListRuntimeTable.frame.Position,
+	closedPosition = UDim2.new(MenuFrame.Position.X.Scale, MenuFrame.Position.X.Offset, MenuFrame.Position.Y.Scale, MenuFrame.Position.Y.Offset - 150),
+	tweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+	hasCustomPosition = false,
+	playerListHasCustomPosition = false,
+}
 
 function RoundAbsoluteUdim2Position(PositionUdim2)
 	if typeof(PositionUdim2) ~= "UDim2" then
@@ -7284,17 +7286,17 @@ function ClampMenuOpenPositionToViewport(OpenPositionUdim2, ViewportWidthNumber,
 end
 
 function StoreMenuOpenPosition(OpenPositionUdim2, HasCustomPositionBoolean)
-	MenuOpenPosition = RoundAbsoluteUdim2Position(OpenPositionUdim2)
-	MenuClosedPosition = BuildMenuClosedPositionFromOpenPosition(MenuOpenPosition)
+	MenuRuntimeTable.openPosition = RoundAbsoluteUdim2Position(OpenPositionUdim2)
+	MenuRuntimeTable.closedPosition = BuildMenuClosedPositionFromOpenPosition(MenuRuntimeTable.openPosition)
 	if HasCustomPositionBoolean ~= nil then
-		MenuHasCustomPositionBoolean = HasCustomPositionBoolean == true
+		MenuRuntimeTable.hasCustomPosition = HasCustomPositionBoolean == true
 	end
 end
 
 function StorePlayerListOpenPosition(OpenPositionUdim2, HasCustomPositionBoolean)
-	PlayerListOpenPosition = RoundAbsoluteUdim2Position(OpenPositionUdim2)
+	MenuRuntimeTable.playerListOpenPosition = RoundAbsoluteUdim2Position(OpenPositionUdim2)
 	if HasCustomPositionBoolean ~= nil then
-		PlayerListHasCustomPositionBoolean = HasCustomPositionBoolean == true
+		MenuRuntimeTable.playerListHasCustomPosition = HasCustomPositionBoolean == true
 	end
 end
 
@@ -7311,7 +7313,7 @@ function ApplyPendingPersistentUiState()
 			type(UiStateTable.menuHasCustomPosition) == "boolean" and UiStateTable.menuHasCustomPosition or true
 		)
 	elseif type(UiStateTable.menuHasCustomPosition) == "boolean" then
-		MenuHasCustomPositionBoolean = UiStateTable.menuHasCustomPosition
+		MenuRuntimeTable.hasCustomPosition = UiStateTable.menuHasCustomPosition
 	end
 
 	local LoadedPlayerListOpenPosition = DeserializePersistedPosition(UiStateTable.playerListOpenPosition)
@@ -7321,7 +7323,7 @@ function ApplyPendingPersistentUiState()
 			type(UiStateTable.playerListHasCustomPosition) == "boolean" and UiStateTable.playerListHasCustomPosition or true
 		)
 	elseif type(UiStateTable.playerListHasCustomPosition) == "boolean" then
-		PlayerListHasCustomPositionBoolean = UiStateTable.playerListHasCustomPosition
+		MenuRuntimeTable.playerListHasCustomPosition = UiStateTable.playerListHasCustomPosition
 	end
 
 	PersistentSettingsRuntimeTable.pendingUiState = nil
@@ -7409,10 +7411,10 @@ function UpdateResponsiveUiLayout()
 		0,
 		math.floor(PlayerListYOffsetNumber + 0.5)
 	)
-	if MenuHasCustomPositionBoolean then
+	if MenuRuntimeTable.hasCustomPosition then
 		StoreMenuOpenPosition(
 			ClampMenuOpenPositionToViewport(
-				MenuOpenPosition,
+				MenuRuntimeTable.openPosition,
 				ViewportWidthNumber,
 				ViewportHeightNumber,
 				MenuWidthScaledNumber,
@@ -7424,11 +7426,11 @@ function UpdateResponsiveUiLayout()
 	else
 		StoreMenuOpenPosition(CenteredMenuOpenPosition, false)
 	end
-	MenuFrame.Position = MenuIsOpenBoolean and MenuOpenPosition or MenuClosedPosition
-	if PlayerListHasCustomPositionBoolean then
+	MenuFrame.Position = MenuRuntimeTable.isOpen and MenuRuntimeTable.openPosition or MenuRuntimeTable.closedPosition
+	if MenuRuntimeTable.playerListHasCustomPosition then
 		StorePlayerListOpenPosition(
 			ClampAbsoluteUdim2PositionToViewport(
-				PlayerListOpenPosition,
+				MenuRuntimeTable.playerListOpenPosition,
 				ViewportWidthNumber,
 				ViewportHeightNumber,
 				PlayerListWidthScaledNumber,
@@ -7440,7 +7442,7 @@ function UpdateResponsiveUiLayout()
 	else
 		StorePlayerListOpenPosition(CenteredPlayerListOpenPosition, false)
 	end
-	PlayerListRuntimeTable.frame.Position = PlayerListOpenPosition
+	PlayerListRuntimeTable.frame.Position = MenuRuntimeTable.playerListOpenPosition
 
 	local DebugXOffsetNumber = PlayerListXOffsetNumber + PlayerListWidthScaledNumber + GapNumber
 	local DebugYOffsetNumber = MenuYOffsetNumber
@@ -7474,7 +7476,7 @@ function UpdatePlayerListCollapseButtonAppearance()
 end
 
 function SetPlayerListCollapsed(CollapsedBoolean)
-	StorePlayerListOpenPosition(PlayerListRuntimeTable.frame.Position, PlayerListHasCustomPositionBoolean)
+	StorePlayerListOpenPosition(PlayerListRuntimeTable.frame.Position, MenuRuntimeTable.playerListHasCustomPosition)
 	PlayerListRuntimeTable.collapsed = CollapsedBoolean == true
 	UpdatePlayerListCollapseButtonAppearance()
 	UpdateResponsiveUiLayout()
@@ -7501,26 +7503,26 @@ if Camera and Camera.GetPropertyChangedSignal then
 	end)
 end
 
-MenuFrame.Position = MenuOpenPosition
+MenuFrame.Position = MenuRuntimeTable.openPosition
 MenuFrame.Visible = true
 
 function SetMenuOpen(OpenBoolean)
-	if MenuIsOpenBoolean == OpenBoolean then
+	if MenuRuntimeTable.isOpen == OpenBoolean then
 		return
 	end
 	if not OpenBoolean then
-		StoreMenuOpenPosition(MenuFrame.Position, MenuHasCustomPositionBoolean)
+		StoreMenuOpenPosition(MenuFrame.Position, MenuRuntimeTable.hasCustomPosition)
 	end
-	MenuIsOpenBoolean = OpenBoolean
+	MenuRuntimeTable.isOpen = OpenBoolean
 	if OpenBoolean then
 		MenuFrame.Visible = true
-		MenuFrame.Position = MenuClosedPosition
-		local OpenTweenObject = TweenService.Create(TweenService, MenuFrame, MenuTweenInfo, { Position = MenuOpenPosition })
+		MenuFrame.Position = MenuRuntimeTable.closedPosition
+		local OpenTweenObject = TweenService.Create(TweenService, MenuFrame, MenuRuntimeTable.tweenInfo, { Position = MenuRuntimeTable.openPosition })
 		OpenTweenObject:Play()
 	else
-		local CloseTweenObject = TweenService.Create(TweenService, MenuFrame, MenuTweenInfo, { Position = MenuClosedPosition })
+		local CloseTweenObject = TweenService.Create(TweenService, MenuFrame, MenuRuntimeTable.tweenInfo, { Position = MenuRuntimeTable.closedPosition })
 		CloseTweenObject.Completed.Connect(CloseTweenObject.Completed, function()
-			if not MenuIsOpenBoolean then
+			if not MenuRuntimeTable.isOpen then
 				MenuFrame.Visible = false
 			end
 		end)
@@ -7533,7 +7535,7 @@ UserInputService.InputBegan.Connect(UserInputService.InputBegan, function(InputO
 		return
 	end
 	if InputObject.KeyCode == Enum.KeyCode.RightShift then
-		SetMenuOpen(not MenuIsOpenBoolean)
+		SetMenuOpen(not MenuRuntimeTable.isOpen)
 	elseif IsBloodZonePlaceBoolean and InputObject.KeyCode == Enum.KeyCode.LeftBracket then
 		ToggleSillyMode()
 	elseif IsBloodZonePlaceBoolean and IsSillyModeBehaviorActive() and not ShieldModeEnabledBoolean and InputObject.KeyCode == Enum.KeyCode.Z then
@@ -7608,10 +7610,10 @@ function BuildPersistentGlobalStateTable()
 		espSkeletonEnabled = EspSkeletonEnabledBoolean == true,
 		espHighlightEnabled = EspHighlightEnabledBoolean == true,
 		ui = {
-			menuOpenPosition = SerializePersistedPosition(MenuOpenPosition),
-			menuHasCustomPosition = MenuHasCustomPositionBoolean == true,
-			playerListOpenPosition = SerializePersistedPosition(PlayerListOpenPosition),
-			playerListHasCustomPosition = PlayerListHasCustomPositionBoolean == true,
+			menuOpenPosition = SerializePersistedPosition(MenuRuntimeTable.openPosition),
+			menuHasCustomPosition = MenuRuntimeTable.hasCustomPosition == true,
+			playerListOpenPosition = SerializePersistedPosition(MenuRuntimeTable.playerListOpenPosition),
+			playerListHasCustomPosition = MenuRuntimeTable.playerListHasCustomPosition == true,
 			playerListCollapsed = PlayerListRuntimeTable.collapsed == true,
 		},
 	}
