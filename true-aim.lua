@@ -660,15 +660,22 @@ PersistentSettingsRuntimeTable.loadedState = type(LoadedPersistentSettingsStateT
 	and LoadedPersistentSettingsStateTable
 	or nil
 if type(LoadedPersistentSettingsStateTable) == "table" then
-	local GlobalStateTable = type(LoadedPersistentSettingsStateTable.global) == "table"
-		and LoadedPersistentSettingsStateTable.global
-		or LoadedPersistentSettingsStateTable
-	ApplyLoadedPersistentScalarState(GlobalStateTable)
-
 	local GameStatesTable = type(LoadedPersistentSettingsStateTable.games) == "table"
 		and LoadedPersistentSettingsStateTable.games
 		or nil
-	ApplyLoadedPersistentGameState(GameStatesTable and GameStatesTable[PersistentSettingsRuntimeTable.gameKey] or nil)
+	local CurrentGameStateTable = GameStatesTable and GameStatesTable[PersistentSettingsRuntimeTable.gameKey] or nil
+	if type(CurrentGameStateTable) == "table" then
+		ApplyLoadedPersistentScalarState(
+			type(CurrentGameStateTable.settings) == "table" and CurrentGameStateTable.settings or CurrentGameStateTable
+		)
+		ApplyLoadedPersistentGameState(CurrentGameStateTable)
+	elseif not GameStatesTable then
+		ApplyLoadedPersistentScalarState(
+			type(LoadedPersistentSettingsStateTable.global) == "table"
+				and LoadedPersistentSettingsStateTable.global
+				or LoadedPersistentSettingsStateTable
+		)
+	end
 end
 
 
@@ -7503,16 +7510,17 @@ SavePersistentStateNow = function()
 		or {}
 	local RootStateTable = {
 		version = PersistentSettingsRuntimeTable.version,
-		global = BuildPersistentGlobalStateTable(),
 		games = GamesTable,
 	}
 
+	local CurrentGameStateTable = BuildPersistentGlobalStateTable()
 	local GameStateTable = BuildPersistentGameStateTable()
-	if GameStateTable then
-		GamesTable[PersistentSettingsRuntimeTable.gameKey] = GameStateTable
-	else
-		GamesTable[PersistentSettingsRuntimeTable.gameKey] = nil
+	if type(GameStateTable) == "table" then
+		for SettingKeyString, SettingValue in pairs(GameStateTable) do
+			CurrentGameStateTable[SettingKeyString] = SettingValue
+		end
 	end
+	GamesTable[PersistentSettingsRuntimeTable.gameKey] = CurrentGameStateTable
 
 	local EncodeSuccessBoolean, EncodedStateString = pcall(HttpService.JSONEncode, HttpService, RootStateTable)
 	if not EncodeSuccessBoolean or type(EncodedStateString) ~= "string" or EncodedStateString == "" then
