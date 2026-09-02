@@ -9,7 +9,7 @@ local TweenService = game.GetService(game, "TweenService")
 local VirtualInputManager = game.GetService(game, "VirtualInputManager")
 local HttpService = game.GetService(game, "HttpService")
 
-TrueAimScriptVersionString = "1.0.2"
+TrueAimScriptVersionString = "1.0.3"
 print("[True Aim] Script version " .. TrueAimScriptVersionString)
 
 local LocalPlayer = Players.LocalPlayer
@@ -153,13 +153,10 @@ LostFrontTeamRuntimeTable = {
 	diedConnection = nil,
 }
 LostFrontCameraRuntimeTable = {
-	aimLookVector = nil,
 	active = false,
 	lastTargetPart = nil,
-	scriptable = false,
-	cameraInstance = nil,
-	cameraType = nil,
-	cameraSubject = nil,
+	pendingMouseDelta = Vector2.zero,
+	inputUnavailableReported = false,
 }
 
 
@@ -182,7 +179,7 @@ local GameIntegrationProfilesByPlaceIdTable = {
 		id = "lostfront",
 		usesCustomTeam = true,
 		visibilityIgnoreWorkspaceFolder = true,
-		cameraRenderPriority = Enum.RenderPriority.Last.Value,
+		cameraRenderPriority = Enum.RenderPriority.Camera.Value - 1,
 	},
 }
 CurrentGameIntegrationProfileTable = GameIntegrationProfilesByPlaceIdTable[game.PlaceId]
@@ -9719,22 +9716,9 @@ end
 
 function ShieldModeRuntimeTable.ResetLostFrontCameraAim()
 	local CameraRuntimeTable = LostFrontCameraRuntimeTable
-	local CameraToRestore = CameraRuntimeTable.cameraInstance
-	if CameraRuntimeTable.scriptable and CameraToRestore then
-		if CameraRuntimeTable.cameraSubject then
-			CameraToRestore.CameraSubject = CameraRuntimeTable.cameraSubject
-		end
-		if CameraRuntimeTable.cameraType then
-			CameraToRestore.CameraType = CameraRuntimeTable.cameraType
-		end
-	end
 	CameraRuntimeTable.active = false
-	CameraRuntimeTable.aimLookVector = nil
 	CameraRuntimeTable.lastTargetPart = nil
-	CameraRuntimeTable.scriptable = false
-	CameraRuntimeTable.cameraInstance = nil
-	CameraRuntimeTable.cameraType = nil
-	CameraRuntimeTable.cameraSubject = nil
+	CameraRuntimeTable.pendingMouseDelta = Vector2.zero
 end
 
 function ShieldModeRuntimeTable.ApplyLostFrontCameraAim(DeltaTimeNumber)
@@ -9760,31 +9744,14 @@ function ShieldModeRuntimeTable.ApplyLostFrontCameraAim(DeltaTimeNumber)
 			or CurrentTargetPartInstance.Position
 	end
 
-	local CameraPositionVector3 = ActiveCamera.CFrame.Position
 	if typeof(TargetPositionVector3) ~= "Vector3" then
-		if CameraRuntimeTable.active
-			and (not AimbotRequireRmbBoolean or LockKeyHeldBoolean)
-			and typeof(CameraRuntimeTable.aimLookVector) == "Vector3" then
-			ActiveCamera.CFrame = CFrame.new(
-				CameraPositionVector3,
-				CameraPositionVector3 + CameraRuntimeTable.aimLookVector
-			)
-			Camera = ActiveCamera
-			return
-		end
-
 		ShieldModeRuntimeTable.ResetLostFrontCameraAim()
 		return
 	end
 
-	local DirectionVector3 = TargetPositionVector3 - CameraPositionVector3
-	if DirectionVector3.Magnitude <= 0.001 then
+	local TargetViewportPositionVector3, TargetOnScreenBoolean = ActiveCamera.WorldToViewportPoint(ActiveCamera, TargetPositionVector3)
+	if not TargetOnScreenBoolean or TargetViewportPositionVector3.Z <= 0 then
 		return
-	end
-
-	local CurrentLookVector = CameraRuntimeTable.aimLookVector
-	if not CameraRuntimeTable.active or typeof(CurrentLookVector) ~= "Vector3" then
-		CurrentLookVector = ActiveCamera.CFrame.LookVector
 	end
 
 	local SmoothingNumber = math.clamp(tonumber(AimbotSmoothingNumber) or 1, 0.01, 1)
@@ -9792,23 +9759,54 @@ function ShieldModeRuntimeTable.ApplyLostFrontCameraAim(DeltaTimeNumber)
 	if type(DeltaTimeNumber) == "number" and DeltaTimeNumber > 0 then
 		FrameAlphaNumber = 1 - ((1 - SmoothingNumber) ^ math.clamp(DeltaTimeNumber * 60, 0.25, 4))
 	end
-	local SmoothedLookVector = CurrentLookVector:Lerp(DirectionVector3.Unit, FrameAlphaNumber)
-	if SmoothedLookVector.Magnitude <= 0.001 then
+	local MouseLocationVector2 = UserInputService.GetMouseLocation(UserInputService)
+	local TargetOffsetVector2 = Vector2.new(
+		TargetViewportPositionVector3.X - MouseLocationVector2.X,
+		TargetViewportPositionVector3.Y - MouseLocationVector2.Y
+	)
+	CameraRuntimeTable.pendingMouseDelta = CameraRuntimeTable.pendingMouseDelta
+		+ (TargetOffsetVector2 * FrameAlphaNumber)
+	local RelativeMouseDeltaVector2 = Vector2.new(
+		math.floor(CameraRuntimeTable.pendingMouseDelta.X + 0.5),
+		math.floor(CameraRuntimeTable.pendingMouseDelta.Y + 0.5)
+	)
+	CameraRuntimeTable.pendingMouseDelta = CameraRuntimeTable.pendingMouseDelta - RelativeMouseDeltaVector2
+	if RelativeMouseDeltaVector2.Magnitude <= 0 then
 		return
 	end
 
-	CameraRuntimeTable.aimLookVector = SmoothedLookVector.Unit
+	local ExecutorEnvironmentTable = _G
+	if type(getgenv) == "function" then
+		local RetrievedEnvironmentBoolean, RetrievedEnvironmentTable = pcall(getgenv)
+		if RetrievedEnvironmentBoolean and type(RetrievedEnvironmentTable) == "table" then
+			ExecutorEnvironmentTable = RetrievedEnvironmentTable
+		end
+	end
+	local MoveRelativeFunction = rawget(ExecutorEnvironmentTable, "mousemoverel")
+		or rawget(ExecutorEnvironmentTable, "mouse_move_relative")
+	if type(MoveRelativeFunction) ~= "function" then
+		if not CameraRuntimeTable.inputUnavailableReported then
+			CameraRuntimeTable.inputUnavailableReported = true
+			DebugLog("lostfront-camera-input", "Lost Front camera method requires mousemoverel; camera ownership was left unchanged", true)
+		end
+		return
+	end
+
+	local MovedBoolean = pcall(
+		MoveRelativeFunction,
+		RelativeMouseDeltaVector2.X,
+		RelativeMouseDeltaVector2.Y
+	)
+	if not MovedBoolean then
+		if not CameraRuntimeTable.inputUnavailableReported then
+			CameraRuntimeTable.inputUnavailableReported = true
+			DebugLog("lostfront-camera-input", "Lost Front camera input adapter could not send relative mouse movement", true)
+		end
+		return
+	end
 	CameraRuntimeTable.active = true
 	CameraRuntimeTable.lastTargetPart = CurrentTargetPartInstance
-	if not CameraRuntimeTable.scriptable then
-		CameraRuntimeTable.cameraInstance = ActiveCamera
-		CameraRuntimeTable.cameraType = ActiveCamera.CameraType
-		CameraRuntimeTable.cameraSubject = ActiveCamera.CameraSubject
-		CameraRuntimeTable.scriptable = true
-		ActiveCamera.CameraType = Enum.CameraType.Scriptable
-	end
 	Camera = ActiveCamera
-	ActiveCamera.CFrame = CFrame.new(CameraPositionVector3, CameraPositionVector3 + CameraRuntimeTable.aimLookVector)
 end
 
 function ShieldModeRuntimeTable.GetFireGunMuzzleRedirect(ActiveFiringLocalGunTable, TargetPositionVector3, FallbackOriginVector3, DirectionMagnitudeNumber)
