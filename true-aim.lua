@@ -111,6 +111,7 @@ LastTargetSearchTimeNumber = 0
 VisibilityRaycastParams = RaycastParams.new()
 VisibilityRaycastParams.FilterType = Enum.RaycastFilterType.Blacklist
 LastRaycastCharacterModel = nil
+LastVisibilityIgnoredWorkspaceFolder = nil
 CustomCharacterCacheDurationNumber = 0.2
 TargetablePartsCacheDurationNumber = 0.25
 SearchableCharacterEntriesCacheDurationNumber = 0.25
@@ -138,6 +139,13 @@ JailbirdVisibilityRuntimeTable = {
 	passThroughByPart = setmetatable({}, { __mode = "k" }),
 	mapCacheInstance = nil,
 }
+LostFrontTeamRuntimeTable = {
+	teamsByPlayer = setmetatable({}, { __mode = "k" }),
+	revision = 0,
+	loading = false,
+	lastLoadTime = 0,
+	connection = nil,
+}
 
 
 local GameIntegrationProfilesByPlaceIdTable = {
@@ -155,13 +163,22 @@ local GameIntegrationProfilesByPlaceIdTable = {
 		id = "jailbird",
 		menuHeight = 642,
 	},
+	[102871156420149] = {
+		id = "lostfront",
+		usesCustomTeam = true,
+		visibilityIgnoreWorkspaceFolder = true,
+		cameraRenderPriorityOffset = 2,
+	},
 }
 CurrentGameIntegrationProfileTable = GameIntegrationProfilesByPlaceIdTable[game.PlaceId]
 CurrentGameIntegrationIdString = CurrentGameIntegrationProfileTable and CurrentGameIntegrationProfileTable.id or nil
 IsBloodZonePlaceBoolean = (CurrentGameIntegrationIdString == "bloodzone")
 IsJailbirdPlaceBoolean = (CurrentGameIntegrationIdString == "jailbird")
+IsLostFrontPlaceBoolean = (CurrentGameIntegrationIdString == "lostfront")
 IsCustomCharacterGameBoolean = CurrentGameIntegrationProfileTable ~= nil
 	and CurrentGameIntegrationProfileTable.usesCustomCharacters == true
+UsesCustomTeamBoolean = CurrentGameIntegrationProfileTable ~= nil
+	and CurrentGameIntegrationProfileTable.usesCustomTeam == true
 UseCustomScopeCheckBoolean = CurrentGameIntegrationProfileTable ~= nil
 	and CurrentGameIntegrationProfileTable.usesCustomScopeCheck == true
 UseProjectilePredictionBoolean = CurrentGameIntegrationProfileTable ~= nil
@@ -175,6 +192,127 @@ CurrentGameIntegrationPlayerListEntryCacheDurationNumber = CurrentGameIntegratio
 if CurrentGameIntegrationProfileTable
 	and type(CurrentGameIntegrationProfileTable.autoFireCooldown) == "number" then
 	AutoFireCooldownNumber = CurrentGameIntegrationProfileTable.autoFireCooldown
+end
+
+local function NormalizeLostFrontTeamString(TeamValue)
+	if type(TeamValue) ~= "string" then
+		return nil
+	end
+
+	local TeamString = string.lower(TeamValue)
+	if TeamString == "attackers" or TeamString == "defenders" then
+		return TeamString
+	end
+
+	return TeamString ~= "" and TeamString or nil
+end
+
+local function SetLostFrontPlayerTeam(PlayerObject, TeamValue)
+	if not PlayerObject then
+		return
+	end
+
+	local TeamString = NormalizeLostFrontTeamString(TeamValue)
+	if not TeamString then
+		return
+	end
+
+	if LostFrontTeamRuntimeTable.teamsByPlayer[PlayerObject] ~= TeamString then
+		LostFrontTeamRuntimeTable.revision = LostFrontTeamRuntimeTable.revision + 1
+	end
+	LostFrontTeamRuntimeTable.teamsByPlayer[PlayerObject] = TeamString
+end
+
+local function EnsureLostFrontTeamConnection()
+	if not IsLostFrontPlaceBoolean or LostFrontTeamRuntimeTable.connection then
+		return
+	end
+
+	local NetworkFolder = ReplicatedStorageService.FindFirstChild(ReplicatedStorageService, "network")
+	local JoinedTeamRemoteEvent = NetworkFolder and NetworkFolder.FindFirstChild(NetworkFolder, "joinedTeam") or nil
+	if JoinedTeamRemoteEvent and JoinedTeamRemoteEvent.OnClientEvent then
+		LostFrontTeamRuntimeTable.connection = JoinedTeamRemoteEvent.OnClientEvent:Connect(SetLostFrontPlayerTeam)
+	end
+end
+
+function LostFrontTeamRuntimeTable.TryLoad()
+	if not IsLostFrontPlaceBoolean then
+		return
+	end
+
+	EnsureLostFrontTeamConnection()
+	if LostFrontTeamRuntimeTable.loading
+		or (tick() - LostFrontTeamRuntimeTable.lastLoadTime) < 0.75 then
+		return
+	end
+
+	LostFrontTeamRuntimeTable.loading = true
+	LostFrontTeamRuntimeTable.lastLoadTime = tick()
+	task.spawn(function()
+		local NetworkFolder = ReplicatedStorageService.FindFirstChild(ReplicatedStorageService, "network")
+		local LoadRegistryRemoteFunction = NetworkFolder and NetworkFolder.FindFirstChild(NetworkFolder, "loadregistry") or nil
+		if LoadRegistryRemoteFunction and LoadRegistryRemoteFunction.InvokeServer then
+			local SuccessBoolean, RegistryTable = pcall(function()
+				return LoadRegistryRemoteFunction:InvokeServer()
+			end)
+			if SuccessBoolean and type(RegistryTable) == "table" then
+				for PlayerKey, PlayerData in pairs(RegistryTable) do
+					local PlayerObject = typeof(PlayerKey) == "Instance"
+						and PlayerKey
+						or Players.FindFirstChild(Players, tostring(PlayerKey))
+					if PlayerObject and type(PlayerData) == "table" then
+						SetLostFrontPlayerTeam(PlayerObject, PlayerData.team)
+					end
+				end
+			end
+		end
+		LostFrontTeamRuntimeTable.loading = false
+	end)
+end
+
+function LostFrontTeamRuntimeTable.GetLocalTeam()
+	if not IsLostFrontPlaceBoolean then
+		return nil
+	end
+
+	LostFrontTeamRuntimeTable.TryLoad()
+	return LostFrontTeamRuntimeTable.teamsByPlayer[LocalPlayer]
+end
+
+function LostFrontTeamRuntimeTable.IsFriendly(PlayerObject, LocalTeamString)
+	return IsLostFrontPlaceBoolean
+		and PlayerObject ~= nil
+		and type(LocalTeamString) == "string"
+		and LostFrontTeamRuntimeTable.teamsByPlayer[PlayerObject] == LocalTeamString
+end
+
+if IsLostFrontPlaceBoolean then
+	LostFrontTeamRuntimeTable.TryLoad()
+end
+
+local function GetTeamCheckState()
+	if UsesCustomTeamBoolean then
+		local LocalTeamString = LostFrontTeamRuntimeTable.GetLocalTeam()
+		return LocalTeamString ~= nil, LocalTeamString
+	end
+
+	if not IsCustomCharacterGameBoolean and LocalPlayer.Team ~= nil then
+		return true, LocalPlayer.Team
+	end
+
+	return false, nil
+end
+
+local function IsPlayerFriendlyForTeamCheck(PlayerObject, LocalTeamObject)
+	if not PlayerObject or not LocalTeamObject then
+		return false
+	end
+
+	if UsesCustomTeamBoolean then
+		return LostFrontTeamRuntimeTable.IsFriendly(PlayerObject, LocalTeamObject)
+	end
+
+	return PlayerObject.Team == LocalTeamObject
 end
 
 
@@ -5102,12 +5240,7 @@ function ResolveCachedThreatData(LocalCharacterModel)
 	ShieldModeRuntimeTable.cachedThreatData = nil
 	ShieldModeRuntimeTable.cachedAimingThreatData = nil
 
-	local TeamCheckEnabledBoolean = false
-	local LocalTeamObject = nil
-	if not IsCustomCharacterGameBoolean and LocalPlayer.Team ~= nil then
-		TeamCheckEnabledBoolean = true
-		LocalTeamObject = LocalPlayer.Team
-	end
+	local TeamCheckEnabledBoolean, LocalTeamObject = GetTeamCheckState()
 
 	local BestThreatData = ShieldModeRuntimeTable.GetDamageIndicatorThreatData(LocalCharacterModel)
 	local BestAimingThreatData = nil
@@ -5878,7 +6011,7 @@ local function GetTargetableParts(CharacterModel)
 end
 
 GetSearchableCharacterEntries = function(LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
-	local CacheKeyString = tostring(LocalCharacterModel) .. "|" .. tostring(TeamCheckEnabledBoolean) .. "|" .. tostring(LocalTeamObject)
+	local CacheKeyString = tostring(LocalCharacterModel) .. "|" .. tostring(TeamCheckEnabledBoolean) .. "|" .. tostring(LocalTeamObject) .. "|" .. tostring(LostFrontTeamRuntimeTable.revision)
 	local NowNumber = tick()
 	if CachedSearchableCharacterEntriesKeyString == CacheKeyString
 		and (NowNumber - CachedSearchableCharacterEntriesTimeNumber) < SearchableCharacterEntriesCacheDurationNumber then
@@ -5910,7 +6043,7 @@ GetSearchableCharacterEntries = function(LocalCharacterModel, TeamCheckEnabledBo
 			return
 		end
 
-		if TeamCheckEnabledBoolean and PlayerObject and LocalTeamObject and PlayerObject.Team == LocalTeamObject then
+		if TeamCheckEnabledBoolean and IsPlayerFriendlyForTeamCheck(PlayerObject, LocalTeamObject) then
 			return
 		end
 
@@ -8417,7 +8550,7 @@ EspRuntimeTable.RemoveCharacterDrawings = function(self, CharacterModel)
 end
 
 EspRuntimeTable.GetCharacterEntries = function(self, LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
-	local CacheKeyString = tostring(LocalCharacterModel) .. "|" .. tostring(TeamCheckEnabledBoolean) .. "|" .. tostring(LocalTeamObject)
+	local CacheKeyString = tostring(LocalCharacterModel) .. "|" .. tostring(TeamCheckEnabledBoolean) .. "|" .. tostring(LocalTeamObject) .. "|" .. tostring(LostFrontTeamRuntimeTable.revision)
 	local NowNumber = tick()
 	if self.entryCacheKey == CacheKeyString
 		and (NowNumber - self.entryCacheTime) < self.entryCacheDuration then
@@ -8439,7 +8572,7 @@ EspRuntimeTable.GetCharacterEntries = function(self, LocalCharacterModel, TeamCh
 		if IsCustomCharacterGameBoolean and not PlayerObject then
 			return
 		end
-		if TeamCheckEnabledBoolean and PlayerObject and LocalTeamObject and PlayerObject.Team == LocalTeamObject then
+		if TeamCheckEnabledBoolean and IsPlayerFriendlyForTeamCheck(PlayerObject, LocalTeamObject) then
 			return
 		end
 		SeenCharacterModels[CharacterModel] = true
@@ -9574,9 +9707,14 @@ ShieldModeRuntimeTable.oldNamecall = hookmetamethod(game, "__namecall", function
 end)
 
 pcall(RunService.UnbindFromRenderStep, RunService, "TrueAimMainLoop")
-RunService.BindToRenderStep(RunService, "TrueAimMainLoop", Enum.RenderPriority.Camera.Value + 1, function()
+local MainLoopRenderPriorityNumber = Enum.RenderPriority.Camera.Value + 1
+if CurrentGameIntegrationProfileTable and type(CurrentGameIntegrationProfileTable.cameraRenderPriorityOffset) == "number" then
+	MainLoopRenderPriorityNumber = Enum.RenderPriority.Camera.Value + CurrentGameIntegrationProfileTable.cameraRenderPriorityOffset
+end
+RunService.BindToRenderStep(RunService, "TrueAimMainLoop", MainLoopRenderPriorityNumber, function()
 	CurrentFrameSequenceNumber = CurrentFrameSequenceNumber + 1
 	local FrameNowNumber = tick()
+	Camera = WorkspaceService.CurrentCamera or Camera
 	local MouseLocationVector2 = UserInputService.GetMouseLocation(UserInputService)
 	local MouseOverPartInstance = MouseObject.Target
 	FrameTargetDataCacheTable.normal = ClearMutableTable(FrameTargetDataCacheTable.normal)
@@ -9604,13 +9742,22 @@ RunService.BindToRenderStep(RunService, "TrueAimMainLoop", Enum.RenderPriority.C
 	end
 
 	local LocalCharacterModel = ResolveCharacterModelForPlayer(LocalPlayer)
-	if LocalCharacterModel ~= LastRaycastCharacterModel then
+	local IgnoredWorkspaceFolder = nil
+	if CurrentGameIntegrationProfileTable and CurrentGameIntegrationProfileTable.visibilityIgnoreWorkspaceFolder then
+		IgnoredWorkspaceFolder = WorkspaceService.FindFirstChild(WorkspaceService, "ignore")
+	end
+	if LocalCharacterModel ~= LastRaycastCharacterModel
+		or IgnoredWorkspaceFolder ~= LastVisibilityIgnoredWorkspaceFolder then
+		local VisibilityIgnoredInstancesTable = {}
 		if LocalCharacterModel then
-			VisibilityRaycastParams.FilterDescendantsInstances = { LocalCharacterModel }
-		else
-			VisibilityRaycastParams.FilterDescendantsInstances = {}
+			table.insert(VisibilityIgnoredInstancesTable, LocalCharacterModel)
 		end
+		if IgnoredWorkspaceFolder then
+			table.insert(VisibilityIgnoredInstancesTable, IgnoredWorkspaceFolder)
+		end
+		VisibilityRaycastParams.FilterDescendantsInstances = VisibilityIgnoredInstancesTable
 		LastRaycastCharacterModel = LocalCharacterModel
+		LastVisibilityIgnoredWorkspaceFolder = IgnoredWorkspaceFolder
 	end
 
 	local LocalCharacterReadyBoolean = IsLocalCharacterReadyForAimbot(LocalCharacterModel)
@@ -9681,15 +9828,7 @@ RunService.BindToRenderStep(RunService, "TrueAimMainLoop", Enum.RenderPriority.C
 			CurrentVisibilityOriginVector3 = Camera.CFrame.Position
 		end
 	end
-	local TeamCheckEnabledBoolean = false
-	local LocalTeamObject = nil
-
-	if not IsCustomCharacterGameBoolean then
-		if LocalPlayer.Team ~= nil then
-			TeamCheckEnabledBoolean = true
-			LocalTeamObject = LocalPlayer.Team
-		end
-	end
+	local TeamCheckEnabledBoolean, LocalTeamObject = GetTeamCheckState()
 
 	local FinalTargetPartInstance = nil
 	local FinalTargetCharacterModel = nil
@@ -10011,11 +10150,17 @@ RunService.BindToRenderStep(RunService, "TrueAimMainLoop", Enum.RenderPriority.C
 		end
 
 		if ShouldAimbotBoolean and IsEffectiveCameraMethodEnabled() then
-			local CameraPositionVector3 = Camera.CFrame.Position
-			local DirectionVector3 = (TargetPositionVector3 - CameraPositionVector3).Unit
-			local CurrentLookVector = Camera.CFrame.LookVector
-			local SmoothedLookVector = CurrentLookVector:Lerp(DirectionVector3, AimbotSmoothingNumber)
-			Camera.CFrame = CFrame.new(CameraPositionVector3, CameraPositionVector3 + SmoothedLookVector)
+			local ActiveCamera = WorkspaceService.CurrentCamera or Camera
+			if ActiveCamera then
+				Camera = ActiveCamera
+				local CameraPositionVector3 = ActiveCamera.CFrame.Position
+				local DirectionVector3 = TargetPositionVector3 - CameraPositionVector3
+				if DirectionVector3.Magnitude > 0.001 then
+					local CurrentLookVector = ActiveCamera.CFrame.LookVector
+					local SmoothedLookVector = CurrentLookVector:Lerp(DirectionVector3.Unit, AimbotSmoothingNumber)
+					ActiveCamera.CFrame = CFrame.new(CameraPositionVector3, CameraPositionVector3 + SmoothedLookVector)
+				end
+			end
 		end
 
 		local ScopeAllowedBoolean = true
