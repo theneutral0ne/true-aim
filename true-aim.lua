@@ -320,6 +320,7 @@ JailbirdGrenadeEspRuntimeTable = {
 	trackingConnections = {},
 	trackingReady = false,
 	maxTrajectoryLineCount = 18,
+	maxAoeLineCount = 32,
 	trajectoryStepTime = 0.12,
 	defaultPredictionTime = 2.5,
 	maxPredictionTime = 5,
@@ -8783,17 +8784,6 @@ JailbirdGrenadeEspRuntimeTable.CreateText = function(self, SizeNumber)
 	return TextObject
 end
 
-JailbirdGrenadeEspRuntimeTable.CreateCircle = function(self)
-	local CircleObject = Drawing.new("Circle")
-	CircleObject.NumSides = 48
-	CircleObject.Thickness = 1.5
-	CircleObject.Filled = false
-	CircleObject.Transparency = 0.9
-	CircleObject.Color = Color3.fromRGB(255, 120, 70)
-	CircleObject.Visible = false
-	return CircleObject
-end
-
 JailbirdGrenadeEspRuntimeTable.RemoveDrawingObject = function(self, DrawingObject)
 	if not DrawingObject then
 		return
@@ -8815,13 +8805,16 @@ JailbirdGrenadeEspRuntimeTable.GetOrCreateDrawings = function(self, GrenadeModel
 
 	DrawingSet = {
 		trajectoryLines = {},
-		aoeCircle = self:CreateCircle(),
+		aoeLines = {},
 		infoText = self:CreateText(13),
 		firstSeenTime = tick(),
 		lastSeenFrame = 0,
 	}
 	for LineIndex = 1, self.maxTrajectoryLineCount do
 		DrawingSet.trajectoryLines[LineIndex] = self:CreateLine(1.5)
+	end
+	for LineIndex = 1, self.maxAoeLineCount do
+		DrawingSet.aoeLines[LineIndex] = self:CreateLine(1.25)
 	end
 	self.trackedByModel[GrenadeModel] = DrawingSet
 	return DrawingSet
@@ -8834,8 +8827,8 @@ JailbirdGrenadeEspRuntimeTable.HideDrawingSet = function(self, DrawingSet)
 	for _, LineObject in ipairs(DrawingSet.trajectoryLines or {}) do
 		LineObject.Visible = false
 	end
-	if DrawingSet.aoeCircle then
-		DrawingSet.aoeCircle.Visible = false
+	for _, LineObject in ipairs(DrawingSet.aoeLines or {}) do
+		LineObject.Visible = false
 	end
 	if DrawingSet.infoText then
 		DrawingSet.infoText.Visible = false
@@ -8850,7 +8843,9 @@ JailbirdGrenadeEspRuntimeTable.RemoveGrenadeDrawings = function(self, GrenadeMod
 	for _, LineObject in ipairs(DrawingSet.trajectoryLines or {}) do
 		self:RemoveDrawingObject(LineObject)
 	end
-	self:RemoveDrawingObject(DrawingSet.aoeCircle)
+	for _, LineObject in ipairs(DrawingSet.aoeLines or {}) do
+		self:RemoveDrawingObject(LineObject)
+	end
 	self:RemoveDrawingObject(DrawingSet.infoText)
 	self.trackedByModel[GrenadeModel] = nil
 end
@@ -8881,8 +8876,30 @@ JailbirdGrenadeEspRuntimeTable.IsGrenadeModel = function(self, InstanceObject)
 	return false
 end
 
+JailbirdGrenadeEspRuntimeTable.IsWorldThrowableModel = function(self, GrenadeModel)
+	if not GrenadeModel or not GrenadeModel.Parent then
+		return false
+	end
+	local CharactersFolder = GetCharactersFolder()
+	if CharactersFolder and GrenadeModel.IsDescendantOf(GrenadeModel, CharactersFolder) then
+		return false
+	end
+	if Camera and GrenadeModel.IsDescendantOf(GrenadeModel, Camera) then
+		return false
+	end
+	local BackpackInstance = LocalPlayer and LocalPlayer.FindFirstChild(LocalPlayer, "Backpack") or nil
+	if BackpackInstance and GrenadeModel.IsDescendantOf(GrenadeModel, BackpackInstance) then
+		return false
+	end
+	local PlayerGuiInstance = LocalPlayer and LocalPlayer.FindFirstChild(LocalPlayer, "PlayerGui") or nil
+	if PlayerGuiInstance and GrenadeModel.IsDescendantOf(GrenadeModel, PlayerGuiInstance) then
+		return false
+	end
+	return self:GetGrenadeBasePart(GrenadeModel) ~= nil
+end
+
 JailbirdGrenadeEspRuntimeTable.TrackCandidate = function(self, InstanceObject)
-	if self:IsGrenadeModel(InstanceObject) then
+	if self:IsGrenadeModel(InstanceObject) and self:IsWorldThrowableModel(InstanceObject) then
 		self.activeByModel[InstanceObject] = true
 	end
 end
@@ -8940,22 +8957,46 @@ JailbirdGrenadeEspRuntimeTable.GetNumberAttribute = function(self, InstanceObjec
 	return DefaultNumber
 end
 
-JailbirdGrenadeEspRuntimeTable.GetFuseRemaining = function(self, GrenadeModel, DrawingSet, NowNumber)
-	local DelayNumber = self:GetNumberAttribute(GrenadeModel, "Delay", nil)
+JailbirdGrenadeEspRuntimeTable.GetGrenadeNumber = function(self, GrenadeModel, BasePart, AttributeNameString, DefaultNumber)
+	local ValueNumber = self:GetNumberAttribute(GrenadeModel, AttributeNameString, nil)
+	if type(ValueNumber) == "number" then
+		return ValueNumber
+	end
+	ValueNumber = self:GetNumberAttribute(BasePart, AttributeNameString, nil)
+	if type(ValueNumber) == "number" then
+		return ValueNumber
+	end
+	for _, DescendantInstance in ipairs(GrenadeModel.GetDescendants(GrenadeModel)) do
+		ValueNumber = self:GetNumberAttribute(DescendantInstance, AttributeNameString, nil)
+		if type(ValueNumber) == "number" then
+			return ValueNumber
+		end
+	end
+	return DefaultNumber
+end
+
+JailbirdGrenadeEspRuntimeTable.GetFuseRemaining = function(self, GrenadeModel, BasePart, DrawingSet, NowNumber)
+	local DelayNumber = self:GetGrenadeNumber(GrenadeModel, BasePart, "Delay", nil)
 	if type(DelayNumber) ~= "number" or DelayNumber <= 0 then
 		return nil
 	end
 
-	local ServerTimeNowNumber = WorkspaceService.GetServerTimeNow and WorkspaceService.GetServerTimeNow(WorkspaceService) or nil
+	local ServerTimeNowNumber = nil
+	if WorkspaceService.GetServerTimeNow then
+		local SuccessBoolean, ResultNumber = pcall(WorkspaceService.GetServerTimeNow, WorkspaceService)
+		if SuccessBoolean and type(ResultNumber) == "number" then
+			ServerTimeNowNumber = ResultNumber
+		end
+	end
 	for _, AttributeNameString in ipairs({ "DetonateAt", "ExplodeAt", "FuseEndTime" }) do
-		local TimestampNumber = self:GetNumberAttribute(GrenadeModel, AttributeNameString, nil)
+		local TimestampNumber = self:GetGrenadeNumber(GrenadeModel, BasePart, AttributeNameString, nil)
 		if type(TimestampNumber) == "number" and type(ServerTimeNowNumber) == "number" then
 			return math.max(0, TimestampNumber - ServerTimeNowNumber)
 		end
 	end
 
 	for _, AttributeNameString in ipairs({ "ThrownAt", "CreatedAt", "SpawnedAt" }) do
-		local TimestampNumber = self:GetNumberAttribute(GrenadeModel, AttributeNameString, nil)
+		local TimestampNumber = self:GetGrenadeNumber(GrenadeModel, BasePart, AttributeNameString, nil)
 		if type(TimestampNumber) == "number" and type(ServerTimeNowNumber) == "number" then
 			return math.max(0, DelayNumber - (ServerTimeNowNumber - TimestampNumber))
 		end
@@ -9040,14 +9081,14 @@ JailbirdGrenadeEspRuntimeTable.GetDamageLineOfSight = function(self, GrenadeMode
 	return false
 end
 
-JailbirdGrenadeEspRuntimeTable.EstimateSelfDamage = function(self, GrenadeModel, ExplosionPositionVector3, LocalCharacterModel)
+JailbirdGrenadeEspRuntimeTable.EstimateSelfDamage = function(self, GrenadeModel, BasePart, ExplosionPositionVector3, LocalCharacterModel)
 	local LocalRootPart = GetCharacterRootPart(LocalCharacterModel)
 	if not LocalRootPart then
 		return 0, false, math.huge, self.defaultRange
 	end
-	local DamageNumber = self:GetNumberAttribute(GrenadeModel, "Damage", 0)
-	local RangeNumber = self:GetNumberAttribute(GrenadeModel, "Range", self.defaultRange)
-	local ProximityNumber = self:GetNumberAttribute(GrenadeModel, "Proximity", RangeNumber)
+	local DamageNumber = self:GetGrenadeNumber(GrenadeModel, BasePart, "Damage", 0)
+	local RangeNumber = self:GetGrenadeNumber(GrenadeModel, BasePart, "Range", self.defaultRange)
+	local ProximityNumber = self:GetGrenadeNumber(GrenadeModel, BasePart, "Proximity", RangeNumber)
 	local OuterRangeNumber = math.max(RangeNumber, ProximityNumber or RangeNumber)
 	local DistanceNumber = (LocalRootPart.Position - ExplosionPositionVector3).Magnitude
 	if DamageNumber <= 0 or DistanceNumber > OuterRangeNumber then
@@ -9064,33 +9105,63 @@ JailbirdGrenadeEspRuntimeTable.EstimateSelfDamage = function(self, GrenadeModel,
 	return math.max(0, EstimatedDamageNumber), true, DistanceNumber, OuterRangeNumber
 end
 
-JailbirdGrenadeEspRuntimeTable.ProjectAoeCircle = function(self, DrawingSet, CenterPositionVector3, RadiusNumber, Color3Value)
+JailbirdGrenadeEspRuntimeTable.ProjectWorldPoint = function(self, WorldPointVector3)
+	local ScreenPointVector3, OnScreenBoolean = Camera.WorldToViewportPoint(Camera, WorldPointVector3)
+	if ScreenPointVector3.Z <= 0 then
+		return nil, false
+	end
+	return Vector2.new(ScreenPointVector3.X, ScreenPointVector3.Y), OnScreenBoolean
+end
+
+JailbirdGrenadeEspRuntimeTable.DrawAoeRing = function(self, DrawingSet, CenterPositionVector3, RadiusNumber, Color3Value)
 	local CenterScreenVector3, CenterOnScreenBoolean = Camera.WorldToViewportPoint(Camera, CenterPositionVector3)
 	if CenterScreenVector3.Z <= 0 then
-		DrawingSet.aoeCircle.Visible = false
+		for _, LineObject in ipairs(DrawingSet.aoeLines or {}) do
+			LineObject.Visible = false
+		end
 		return false, nil
 	end
 
-	local CameraCFrame = Camera.CFrame
-	local RightPointVector3 = CenterPositionVector3 + CameraCFrame.RightVector * RadiusNumber
-	local UpPointVector3 = CenterPositionVector3 + CameraCFrame.UpVector * RadiusNumber
-	local RightScreenVector3 = Camera.WorldToViewportPoint(Camera, RightPointVector3)
-	local UpScreenVector3 = Camera.WorldToViewportPoint(Camera, UpPointVector3)
 	local CenterVector2 = Vector2.new(CenterScreenVector3.X, CenterScreenVector3.Y)
-	local RadiusPixelsNumber = math.max(
-		(Vector2.new(RightScreenVector3.X, RightScreenVector3.Y) - CenterVector2).Magnitude,
-		(Vector2.new(UpScreenVector3.X, UpScreenVector3.Y) - CenterVector2).Magnitude
-	)
-	if RadiusPixelsNumber <= 1 then
-		DrawingSet.aoeCircle.Visible = false
-		return CenterOnScreenBoolean, CenterVector2
+	local AnyVisibleBoolean = CenterOnScreenBoolean
+	local SegmentCountNumber = self.maxAoeLineCount
+	local PreviousPointVector2 = nil
+	local FirstPointVector2 = nil
+	local PreviousVisibleBoolean = false
+	local FirstVisibleBoolean = false
+	for LineIndex = 1, SegmentCountNumber do
+		local AngleNumber = ((LineIndex - 1) / SegmentCountNumber) * math.pi * 2
+		local WorldPointVector3 = CenterPositionVector3 + Vector3.new(math.cos(AngleNumber) * RadiusNumber, 0, math.sin(AngleNumber) * RadiusNumber)
+		local ScreenPointVector2, VisibleBoolean = self:ProjectWorldPoint(WorldPointVector3)
+		if LineIndex == 1 then
+			FirstPointVector2 = ScreenPointVector2
+			FirstVisibleBoolean = VisibleBoolean
+		end
+		if PreviousPointVector2 and ScreenPointVector2 then
+			local LineObject = DrawingSet.aoeLines[LineIndex - 1]
+			LineObject.From = PreviousPointVector2
+			LineObject.To = ScreenPointVector2
+			LineObject.Color = Color3Value
+			LineObject.Visible = PreviousVisibleBoolean or VisibleBoolean
+			AnyVisibleBoolean = AnyVisibleBoolean or LineObject.Visible
+		elseif DrawingSet.aoeLines[LineIndex - 1] then
+			DrawingSet.aoeLines[LineIndex - 1].Visible = false
+		end
+		PreviousPointVector2 = ScreenPointVector2
+		PreviousVisibleBoolean = VisibleBoolean
 	end
 
-	DrawingSet.aoeCircle.Position = CenterVector2
-	DrawingSet.aoeCircle.Radius = math.clamp(RadiusPixelsNumber, 2, 900)
-	DrawingSet.aoeCircle.Color = Color3Value
-	DrawingSet.aoeCircle.Visible = CenterOnScreenBoolean
-	return CenterOnScreenBoolean, CenterVector2
+	local ClosingLineObject = DrawingSet.aoeLines[SegmentCountNumber]
+	if PreviousPointVector2 and FirstPointVector2 then
+		ClosingLineObject.From = PreviousPointVector2
+		ClosingLineObject.To = FirstPointVector2
+		ClosingLineObject.Color = Color3Value
+		ClosingLineObject.Visible = PreviousVisibleBoolean or FirstVisibleBoolean
+		AnyVisibleBoolean = AnyVisibleBoolean or ClosingLineObject.Visible
+	else
+		ClosingLineObject.Visible = false
+	end
+	return AnyVisibleBoolean, CenterVector2
 end
 
 JailbirdGrenadeEspRuntimeTable.DrawTrajectory = function(self, DrawingSet, PointsTable, Color3Value)
@@ -9119,7 +9190,7 @@ JailbirdGrenadeEspRuntimeTable.GetActiveGrenades = function(self)
 	self:SetupTracking()
 	local GrenadesTable = {}
 	for GrenadeModel in pairs(self.activeByModel) do
-		if GrenadeModel and GrenadeModel.Parent and self:GetGrenadeBasePart(GrenadeModel) then
+		if self:IsWorldThrowableModel(GrenadeModel) then
 			GrenadesTable[#GrenadesTable + 1] = GrenadeModel
 		else
 			self.activeByModel[GrenadeModel] = nil
@@ -9138,7 +9209,7 @@ JailbirdGrenadeEspRuntimeTable.UpdateGrenade = function(self, GrenadeModel, Loca
 	end
 
 	local NowNumber = tick()
-	local FuseRemainingNumber = self:GetFuseRemaining(GrenadeModel, DrawingSet, NowNumber)
+	local FuseRemainingNumber = self:GetFuseRemaining(GrenadeModel, BasePart, DrawingSet, NowNumber)
 	local VelocityVector3 = SafeGetBasePartAssemblyLinearVelocity(BasePart) or Vector3.new(0, 0, 0)
 	local TimeWindowNumber = math.clamp(FuseRemainingNumber or self.defaultPredictionTime, 0.4, self.maxPredictionTime)
 	local PointsTable
@@ -9148,11 +9219,11 @@ JailbirdGrenadeEspRuntimeTable.UpdateGrenade = function(self, GrenadeModel, Loca
 		PointsTable = self:GetTrajectoryPoints(GrenadeModel, BasePart.Position, VelocityVector3, TimeWindowNumber)
 	end
 	local ExplosionPositionVector3 = PointsTable[#PointsTable] or BasePart.Position
-	local DamageNumber, CanDamageBoolean, DistanceNumber, RadiusNumber = self:EstimateSelfDamage(GrenadeModel, ExplosionPositionVector3, LocalCharacterModel)
+	local DamageNumber, CanDamageBoolean, DistanceNumber, RadiusNumber = self:EstimateSelfDamage(GrenadeModel, BasePart, ExplosionPositionVector3, LocalCharacterModel)
 	local DangerColor3 = CanDamageBoolean and DamageNumber > 0 and Color3.fromRGB(255, 75, 55) or Color3.fromRGB(255, 190, 90)
 
 	self:DrawTrajectory(DrawingSet, PointsTable, DangerColor3)
-	local AoeVisibleBoolean, CenterVector2 = self:ProjectAoeCircle(DrawingSet, ExplosionPositionVector3, RadiusNumber, DangerColor3)
+	local AoeVisibleBoolean, CenterVector2 = self:DrawAoeRing(DrawingSet, ExplosionPositionVector3, RadiusNumber, DangerColor3)
 	local AnchorScreenVector3, AnchorOnScreenBoolean = Camera.WorldToViewportPoint(Camera, BasePart.Position)
 	local TextPositionVector2 = nil
 	if AnchorScreenVector3.Z > 0 and AnchorOnScreenBoolean then
@@ -9193,12 +9264,16 @@ JailbirdGrenadeEspRuntimeTable.Update = function(self, LocalCharacterModel)
 	end
 
 	for _, GrenadeModel in ipairs(self:GetActiveGrenades()) do
-		self:UpdateGrenade(GrenadeModel, LocalCharacterModel)
+		local SuccessBoolean = pcall(self.UpdateGrenade, self, GrenadeModel, LocalCharacterModel)
+		if not SuccessBoolean then
+			self.activeByModel[GrenadeModel] = nil
+			self:RemoveGrenadeDrawings(GrenadeModel)
+		end
 	end
 
-	for _, DrawingSet in pairs(self.trackedByModel) do
+	for GrenadeModel, DrawingSet in pairs(self.trackedByModel) do
 		if DrawingSet.lastSeenFrame ~= CurrentFrameSequenceNumber then
-			self:HideDrawingSet(DrawingSet)
+			self:RemoveGrenadeDrawings(GrenadeModel)
 		end
 	end
 end
@@ -10179,6 +10254,7 @@ RunService.BindToRenderStep(RunService, "TrueAimMainLoop", Enum.RenderPriority.C
 		TargetLine.Visible = false
 		SetTargetCubeVisible(false)
 		EspRuntimeTable:HideAll()
+		JailbirdGrenadeEspRuntimeTable:HideAll()
 		return
 	end
 
