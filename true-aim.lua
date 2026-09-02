@@ -9,7 +9,7 @@ local TweenService = game.GetService(game, "TweenService")
 local VirtualInputManager = game.GetService(game, "VirtualInputManager")
 local HttpService = game.GetService(game, "HttpService")
 
-TrueAimScriptVersionString = "1.0.5"
+TrueAimScriptVersionString = "1.0.6"
 print("[True Aim] Script version " .. TrueAimScriptVersionString)
 
 local LocalPlayer = Players.LocalPlayer
@@ -577,6 +577,11 @@ local ShieldModeRuntimeTable: { [string]: any } = {
 	currentWeaponBallisticsProfileValue = nil,
 	lostFrontFastCastHookApplied = false,
 	lostFrontFastCastHookAttemptTime = 0,
+	lostFrontWeaponFireHookApplied = false,
+	lostFrontWeaponFireHookAttemptTime = 0,
+	lostFrontPendingShotTargetPoint = nil,
+	lostFrontPendingShotExpiresAt = 0,
+	lostFrontPendingShotCaster = nil,
 	heldItemStateCacheDuration = 0.2,
 	GetBloodZoneHeldItemState = nil,
 }
@@ -9620,27 +9625,63 @@ function ShieldModeRuntimeTable.IsHookOnlyMethodEnabled()
 	return IsEffectiveHookMethodEnabled() and not IsEffectiveCameraMethodEnabled()
 end
 
-function ShieldModeRuntimeTable.GetLostFrontRaycastRedirect(OriginVector3, DirectionVector3)
+function ShieldModeRuntimeTable.EnsureLostFrontWeaponFireHook()
 	if not IsLostFrontPlaceBoolean
-		or ShieldModeRuntimeTable.lostFrontFastCastHookApplied
-		or typeof(OriginVector3) ~= "Vector3"
-		or typeof(DirectionVector3) ~= "Vector3"
-		or DirectionVector3.Magnitude <= 0.001 then
-		return nil
+		or ShieldModeRuntimeTable.lostFrontWeaponFireHookApplied
+		or type(getgc) ~= "function"
+		or type(hookfunction) ~= "function" then
+		return
 	end
 
-	local TargetPositionVector3 = GetCurrentEffectiveAimPointVector3()
-		or (CurrentTargetPartInstance and CurrentTargetPartInstance.Parent and CurrentTargetPartInstance.Position)
-	if typeof(TargetPositionVector3) ~= "Vector3" then
-		return nil
+	local NowNumber = tick()
+	if (NowNumber - ShieldModeRuntimeTable.lostFrontWeaponFireHookAttemptTime) < 2 then
+		return
+	end
+	ShieldModeRuntimeTable.lostFrontWeaponFireHookAttemptTime = NowNumber
+
+	local GetGarbageSuccessBoolean, GarbageObjectsTable = pcall(getgc, true)
+	if not GetGarbageSuccessBoolean or type(GarbageObjectsTable) ~= "table" then
+		return
 	end
 
-	local RedirectVector3 = TargetPositionVector3 - OriginVector3
-	if RedirectVector3.Magnitude <= 0.001 then
-		return nil
-	end
+	for _, WeaponControllerTable in pairs(GarbageObjectsTable) do
+		if type(WeaponControllerTable) ~= "table"
+			or type(rawget(WeaponControllerTable, "fire")) ~= "function"
+			or type(rawget(WeaponControllerTable, "canFire")) ~= "function"
+			or type(rawget(WeaponControllerTable, "setProjectileVisible")) ~= "function"
+			or type(rawget(WeaponControllerTable, "init_local")) ~= "function" then
+			continue
+		end
 
-	return RedirectVector3
+		local WeaponFireFunction = rawget(WeaponControllerTable, "fire")
+		local OriginalWeaponFireFunction
+		local HookSuccessBoolean, HookedOriginalFunction = pcall(function()
+			return hookfunction(WeaponFireFunction, function(WeaponController, ...)
+				if IsEffectiveHookMethodEnabled() then
+					local LocalCharacterModel = CurrentFrameLocalCharacterModel
+					if not CurrentFrameLocalCharacterReadyBoolean then
+						LocalCharacterModel = ResolveCharacterModelForPlayer(LocalPlayer)
+					end
+					if ShieldModeRuntimeTable.ShouldRedirectTowardCurrentTarget(LocalCharacterModel) then
+						local TargetPositionVector3 = GetCurrentTrackedTargetPointVector3()
+							or (CurrentTargetPartInstance and CurrentTargetPartInstance.Parent and CurrentTargetPartInstance.Position)
+						if typeof(TargetPositionVector3) == "Vector3" then
+							ShieldModeRuntimeTable.lostFrontPendingShotTargetPoint = TargetPositionVector3
+							ShieldModeRuntimeTable.lostFrontPendingShotExpiresAt = tick() + 0.25
+							ShieldModeRuntimeTable.lostFrontPendingShotCaster = nil
+						end
+					end
+				end
+
+				return OriginalWeaponFireFunction(WeaponController, ...)
+			end)
+		end)
+		if HookSuccessBoolean and type(HookedOriginalFunction) == "function" then
+			OriginalWeaponFireFunction = HookedOriginalFunction
+			ShieldModeRuntimeTable.lostFrontWeaponFireHookApplied = true
+			return
+		end
+	end
 end
 
 function ShieldModeRuntimeTable.EnsureLostFrontFastCastHook()
@@ -9688,8 +9729,22 @@ function ShieldModeRuntimeTable.EnsureLostFrontFastCastHook()
 					if typeof(OriginVector3) == "Vector3"
 						and typeof(DirectionVector3) == "Vector3"
 						and ShieldModeRuntimeTable.ShouldRedirectTowardCurrentTarget(LocalCharacterModel) then
-						local TargetPositionVector3 = GetCurrentTrackedTargetPointVector3()
-							or (CurrentTargetPartInstance and CurrentTargetPartInstance.Parent and CurrentTargetPartInstance.Position)
+						local TargetPositionVector3 = nil
+						if ShieldModeRuntimeTable.lostFrontWeaponFireHookApplied then
+							if tick() <= ShieldModeRuntimeTable.lostFrontPendingShotExpiresAt
+								and (not ShieldModeRuntimeTable.lostFrontPendingShotCaster
+									or ShieldModeRuntimeTable.lostFrontPendingShotCaster == Caster) then
+								TargetPositionVector3 = ShieldModeRuntimeTable.lostFrontPendingShotTargetPoint
+								ShieldModeRuntimeTable.lostFrontPendingShotCaster = Caster
+							else
+								ShieldModeRuntimeTable.lostFrontPendingShotTargetPoint = nil
+								ShieldModeRuntimeTable.lostFrontPendingShotExpiresAt = 0
+								ShieldModeRuntimeTable.lostFrontPendingShotCaster = nil
+							end
+						else
+							TargetPositionVector3 = GetCurrentTrackedTargetPointVector3()
+								or (CurrentTargetPartInstance and CurrentTargetPartInstance.Parent and CurrentTargetPartInstance.Position)
+						end
 						local RedirectVector3 = typeof(TargetPositionVector3) == "Vector3"
 							and TargetPositionVector3 - OriginVector3
 							or nil
@@ -9936,10 +9991,6 @@ ShieldModeRuntimeTable.oldNamecall = hookmetamethod(game, "__namecall", function
 			and typeof(Direction) == "Vector3"
 			and Direction.Magnitude > 0.001 then
 			if IsLostFrontPlaceBoolean then
-				local LostFrontRedirectDirectionVector3 = ShieldModeRuntimeTable.GetLostFrontRaycastRedirect(Origin, Direction)
-				if LostFrontRedirectDirectionVector3 then
-					Args[2] = LostFrontRedirectDirectionVector3
-				end
 				return ShieldModeRuntimeTable.oldNamecall(Self, unpack(Args))
 			end
 
@@ -10013,6 +10064,7 @@ RunService.BindToRenderStep(RunService, "TrueAimMainLoop", MainLoopRenderPriorit
 	Camera = WorkspaceService.CurrentCamera or Camera
 	if IsLostFrontPlaceBoolean then
 		ShieldModeRuntimeTable.EnsureLostFrontFastCastHook()
+		ShieldModeRuntimeTable.EnsureLostFrontWeaponFireHook()
 	end
 	local MouseLocationVector2 = UserInputService.GetMouseLocation(UserInputService)
 	local MouseOverPartInstance = MouseObject.Target
