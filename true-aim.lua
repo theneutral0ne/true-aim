@@ -9278,6 +9278,11 @@ JailbirdGrenadeEspRuntimeTable.Update = function(self, LocalCharacterModel)
 	end
 end
 
+function RenderAimbotEspOverlays(LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
+	EspRuntimeTable:Update(LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
+	JailbirdGrenadeEspRuntimeTable:Update(LocalCharacterModel)
+end
+
 function GetProjectileArcVisibleTargetData(PartInstance, CharacterModel)
 	local WeaponBallisticsProfileTable = CurrentWeaponBallisticsProfileTable
 	if not ShouldUseProjectileArcVisibilityProfile(WeaponBallisticsProfileTable) then
@@ -10587,9 +10592,6 @@ RunService.BindToRenderStep(RunService, "TrueAimMainLoop", Enum.RenderPriority.C
 		end
 	end
 
-	EspRuntimeTable:Update(LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
-	JailbirdGrenadeEspRuntimeTable:Update(LocalCharacterModel)
-
 	if CurrentTargetPartInstance and IsCharacterAlive(CurrentTargetCharacterModel) then
 		local TargetPositionVector3 = GetCurrentEffectiveAimPointVector3()
 			or GetCurrentTrackedTargetPointVector3()
@@ -10654,5 +10656,10 @@ RunService.BindToRenderStep(RunService, "TrueAimMainLoop", Enum.RenderPriority.C
 		end
 	elseif IsBloodZonePlaceBoolean and IsEffectiveShieldModeEnabled() then
 		ShieldModeRuntimeTable.UpdateCombatState(LocalCharacterModel, false)
+	end
+	if IsJailbirdPlaceBoolean then
+		task.defer(RenderAimbotEspOverlays, LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
+	else
+		RenderAimbotEspOverlays(LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
 	end
 end)
