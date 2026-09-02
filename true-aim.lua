@@ -9659,11 +9659,11 @@ function ShieldModeRuntimeTable.EnsureLostFrontFastCastHook()
 	end
 
 	for _, FastCastTable in pairs(GarbageObjectsTable) do
-		if type(FastCastTable) ~= "table" or FastCastTable.__type ~= "FastCast" then
+		if type(FastCastTable) ~= "table" or rawget(FastCastTable, "__type") ~= "FastCast" then
 			continue
 		end
 
-		local FireFunction = FastCastTable.Fire
+		local FireFunction = rawget(FastCastTable, "Fire")
 		if type(FireFunction) ~= "function" then
 			continue
 		end
