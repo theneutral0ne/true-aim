@@ -8,7 +8,7 @@ local GuiService = game.GetService(game, "GuiService")
 local TweenService = game.GetService(game, "TweenService")
 local VirtualInputManager = game.GetService(game, "VirtualInputManager")
 local HttpService = game.GetService(game, "HttpService")
-print("test")
+
 local LocalPlayer = Players.LocalPlayer
 local Camera = WorkspaceService.CurrentCamera
 local MouseObject = LocalPlayer.GetMouse(LocalPlayer)
