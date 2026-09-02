@@ -7158,7 +7158,7 @@ function StorePlayerListOpenPosition(OpenPositionUdim2, HasCustomPositionBoolean
 	end
 end
 
-local function ApplyPendingPersistentUiState()
+function ApplyPendingPersistentUiState()
 	local UiStateTable = PersistentSettingsRuntimeTable.pendingUiState
 	if type(UiStateTable) ~= "table" then
 		return
@@ -7449,7 +7449,7 @@ SetTargetCubeVisible = function(IsVisible)
 	end
 end
 
-local function BuildPersistentGlobalStateTable()
+function BuildPersistentGlobalStateTable()
 	return {
 		smoothing = tonumber(AimbotSmoothingNumber) or 0,
 		fovRadius = tonumber(FovCircle.Radius) or 0,
@@ -7477,7 +7477,7 @@ local function BuildPersistentGlobalStateTable()
 	}
 end
 
-local function BuildPersistentGameStateTable()
+function BuildPersistentGameStateTable()
 	if IsBloodZonePlaceBoolean then
 		return {
 			sillyModeEnabled = SillyModeEnabledBoolean == true,
