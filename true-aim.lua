@@ -9,7 +9,7 @@ local TweenService = game.GetService(game, "TweenService")
 local VirtualInputManager = game.GetService(game, "VirtualInputManager")
 local HttpService = game.GetService(game, "HttpService")
 
-TrueAimScriptVersionString = "1.0.1"
+TrueAimScriptVersionString = "1.0.2"
 print("[True Aim] Script version " .. TrueAimScriptVersionString)
 
 local LocalPlayer = Players.LocalPlayer
@@ -183,7 +183,6 @@ local GameIntegrationProfilesByPlaceIdTable = {
 		usesCustomTeam = true,
 		visibilityIgnoreWorkspaceFolder = true,
 		cameraRenderPriority = Enum.RenderPriority.Last.Value,
-		hookIgnoresFov = true,
 	},
 }
 CurrentGameIntegrationProfileTable = GameIntegrationProfilesByPlaceIdTable[game.PlaceId]
@@ -1548,12 +1547,7 @@ local function ShouldApplyNormalHookHitChance()
 end
 
 local function ShouldIgnoreFovChecks(IgnoreFovBoolean)
-	return IgnoreFovBoolean
-		or IsSillyModeBehaviorActive()
-		or (CurrentGameIntegrationProfileTable
-			and CurrentGameIntegrationProfileTable.hookIgnoresFov == true
-			and IsEffectiveHookMethodEnabled()
-			and not IsEffectiveCameraMethodEnabled())
+	return IgnoreFovBoolean or IsSillyModeBehaviorActive()
 end
 
 local function ShouldIgnoreOffscreenChecks()
