@@ -9,7 +9,7 @@ local TweenService = game.GetService(game, "TweenService")
 local VirtualInputManager = game.GetService(game, "VirtualInputManager")
 local HttpService = game.GetService(game, "HttpService")
 
-TrueAimScriptVersionString = "1.0.3"
+TrueAimScriptVersionString = "1.0.4"
 print("[True Aim] Script version " .. TrueAimScriptVersionString)
 
 local LocalPlayer = Players.LocalPlayer
@@ -9760,9 +9760,21 @@ function ShieldModeRuntimeTable.ApplyLostFrontCameraAim(DeltaTimeNumber)
 		FrameAlphaNumber = 1 - ((1 - SmoothingNumber) ^ math.clamp(DeltaTimeNumber * 60, 0.25, 4))
 	end
 	local MouseLocationVector2 = UserInputService.GetMouseLocation(UserInputService)
+	local AimReferenceLocationVector2 = MouseLocationVector2
+	local PlayerGuiInstance = LocalPlayer.FindFirstChildOfClass(LocalPlayer, "PlayerGui")
+	local LostFrontCursorGuiInstance = PlayerGuiInstance and PlayerGuiInstance.FindFirstChild(PlayerGuiInstance, "cursor") or nil
+	local LostFrontCursorFrameInstance = LostFrontCursorGuiInstance
+		and LostFrontCursorGuiInstance.FindFirstChild(LostFrontCursorGuiInstance, "Frame") or nil
+	if LostFrontCursorFrameInstance
+		and LostFrontCursorFrameInstance.Visible
+		and LostFrontCursorFrameInstance.AbsoluteSize.X > 0
+		and LostFrontCursorFrameInstance.AbsoluteSize.Y > 0 then
+		AimReferenceLocationVector2 = LostFrontCursorFrameInstance.AbsolutePosition
+			+ (LostFrontCursorFrameInstance.AbsoluteSize * 0.5)
+	end
 	local TargetOffsetVector2 = Vector2.new(
-		TargetViewportPositionVector3.X - MouseLocationVector2.X,
-		TargetViewportPositionVector3.Y - MouseLocationVector2.Y
+		TargetViewportPositionVector3.X - AimReferenceLocationVector2.X,
+		TargetViewportPositionVector3.Y - AimReferenceLocationVector2.Y
 	)
 	CameraRuntimeTable.pendingMouseDelta = CameraRuntimeTable.pendingMouseDelta
 		+ (TargetOffsetVector2 * FrameAlphaNumber)
@@ -10500,7 +10512,7 @@ RunService.BindToRenderStep(RunService, "TrueAimMainLoop", MainLoopRenderPriorit
 	end
 	if IsJailbirdPlaceBoolean then
 		task.defer(RenderAimbotEspOverlays, LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
-	else
+	elseif not IsLostFrontPlaceBoolean then
 		RenderAimbotEspOverlays(LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
 	end
 end)
@@ -10510,9 +10522,20 @@ if IsLostFrontPlaceBoolean then
 	RunService.BindToRenderStep(
 		RunService,
 		"TrueAimLostFrontCamera",
-		Enum.RenderPriority.Last.Value,
+		Enum.RenderPriority.Camera.Value - 1,
 		function(DeltaTimeNumber)
 			ShieldModeRuntimeTable.ApplyLostFrontCameraAim(DeltaTimeNumber)
+		end
+	)
+	pcall(RunService.UnbindFromRenderStep, RunService, "TrueAimLostFrontEsp")
+	RunService.BindToRenderStep(
+		RunService,
+		"TrueAimLostFrontEsp",
+		Enum.RenderPriority.Last.Value,
+		function()
+			local LocalCharacterModel = LocalPlayer.Character
+			local TeamCheckEnabledBoolean, LocalTeamObject = GetTeamCheckState()
+			RenderAimbotEspOverlays(LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
 		end
 	)
 end
