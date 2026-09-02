@@ -8759,59 +8759,108 @@ EspRuntimeTable.Update = function(self, LocalCharacterModel, TeamCheckEnabledBoo
 	end
 end
 
-JailbirdGrenadeEspRuntimeTable.CreateLine = function(self, ThicknessNumber)
-	local LineObject = Drawing.new("Line")
-	LineObject.Thickness = ThicknessNumber or 1
-	LineObject.Transparency = 1
-	LineObject.Color = Color3.fromRGB(255, 190, 90)
-	LineObject.Visible = false
-	return LineObject
-end
-
-JailbirdGrenadeEspRuntimeTable.CreateText = function(self, SizeNumber)
-	local TextObject = Drawing.new("Text")
-	TextObject.Size = SizeNumber or 13
-	TextObject.Transparency = 1
-	TextObject.Color = Color3.fromRGB(255, 230, 170)
-	TextObject.Visible = false
-	TextObject.Center = true
-	pcall(function()
-		TextObject.Outline = true
-	end)
-	return TextObject
-end
-
-JailbirdGrenadeEspRuntimeTable.RemoveDrawingObject = function(self, DrawingObject)
-	if not DrawingObject then
-		return
+JailbirdGrenadeEspRuntimeTable.GetHostFolder = function(self)
+	local HostFolder = self.hostFolder
+	if HostFolder and HostFolder.Parent then
+		return HostFolder
 	end
+	HostFolder = Instance.new("Folder")
+	HostFolder.Name = "TrueAimJailbirdGrenadeEsp"
+	HostFolder.Parent = WorkspaceService
+	self.hostFolder = HostFolder
+	return HostFolder
+end
+
+JailbirdGrenadeEspRuntimeTable.CreateSegmentPart = function(self, ParentInstance)
+	local SegmentPart = Instance.new("Part")
+	SegmentPart.Name = "Segment"
+	SegmentPart.Anchored = true
+	SegmentPart.CanCollide = false
+	SegmentPart.CanTouch = false
+	SegmentPart.CastShadow = false
+	SegmentPart.Material = Enum.Material.Neon
+	SegmentPart.Size = Vector3.new(0.06, 0.06, 0.06)
+	SegmentPart.Transparency = 1
 	pcall(function()
-		if DrawingObject.Remove then
-			DrawingObject.Remove(DrawingObject)
-		elseif DrawingObject.Destroy then
-			DrawingObject.Destroy(DrawingObject)
-		end
+		SegmentPart.CanQuery = false
 	end)
+	SegmentPart.Parent = ParentInstance
+	return SegmentPart
+end
+
+JailbirdGrenadeEspRuntimeTable.SetSegmentPart = function(self, SegmentPart, StartPositionVector3, EndPositionVector3, Color3Value, ThicknessNumber)
+	if not SegmentPart or not StartPositionVector3 or not EndPositionVector3 then
+		return false
+	end
+	local SegmentVector3 = EndPositionVector3 - StartPositionVector3
+	local SegmentLengthNumber = SegmentVector3.Magnitude
+	if SegmentLengthNumber <= 0.01 then
+		SegmentPart.Transparency = 1
+		return false
+	end
+	SegmentPart.Color = Color3Value
+	SegmentPart.Size = Vector3.new(ThicknessNumber, ThicknessNumber, SegmentLengthNumber)
+	SegmentPart.CFrame = CFrame.new((StartPositionVector3 + EndPositionVector3) * 0.5, EndPositionVector3)
+	SegmentPart.Transparency = 0.18
+	return true
+end
+
+JailbirdGrenadeEspRuntimeTable.CreateLabelObjects = function(self, ParentInstance)
+	local AnchorPart = Instance.new("Part")
+	AnchorPart.Name = "LabelAnchor"
+	AnchorPart.Anchored = true
+	AnchorPart.CanCollide = false
+	AnchorPart.CanTouch = false
+	AnchorPart.CastShadow = false
+	AnchorPart.Size = Vector3.new(0.2, 0.2, 0.2)
+	AnchorPart.Transparency = 1
+	pcall(function()
+		AnchorPart.CanQuery = false
+	end)
+	AnchorPart.Parent = ParentInstance
+
+	local BillboardGui = Instance.new("BillboardGui")
+	BillboardGui.Name = "GrenadeInfo"
+	BillboardGui.Adornee = AnchorPart
+	BillboardGui.AlwaysOnTop = true
+	BillboardGui.Size = UDim2.new(0, 220, 0, 42)
+	BillboardGui.StudsOffset = Vector3.new(0, 0, 0)
+	BillboardGui.Enabled = false
+	BillboardGui.Parent = AnchorPart
+
+	local TextLabel = Instance.new("TextLabel")
+	TextLabel.BackgroundTransparency = 1
+	TextLabel.Size = UDim2.new(1, 0, 1, 0)
+	TextLabel.Font = Enum.Font.SourceSansBold
+	TextLabel.TextSize = 14
+	TextLabel.TextStrokeTransparency = 0.25
+	TextLabel.TextWrapped = true
+	TextLabel.TextColor3 = Color3.fromRGB(255, 230, 170)
+	TextLabel.Parent = BillboardGui
+	return AnchorPart, BillboardGui, TextLabel
 end
 
 JailbirdGrenadeEspRuntimeTable.GetOrCreateDrawings = function(self, GrenadeModel)
 	local DrawingSet = self.trackedByModel[GrenadeModel]
-	if DrawingSet then
+	if DrawingSet and DrawingSet.container and DrawingSet.container.Parent then
 		return DrawingSet
 	end
-
+	local ContainerModel = Instance.new("Model")
+	ContainerModel.Name = "GrenadeEsp"
+	ContainerModel.Parent = self:GetHostFolder()
 	DrawingSet = {
-		trajectoryLines = {},
-		aoeLines = {},
-		infoText = self:CreateText(13),
+		container = ContainerModel,
+		trajectoryParts = {},
+		aoeParts = {},
 		firstSeenTime = tick(),
 		lastSeenFrame = 0,
 	}
-	for LineIndex = 1, self.maxTrajectoryLineCount do
-		DrawingSet.trajectoryLines[LineIndex] = self:CreateLine(1.5)
+	DrawingSet.labelAnchor, DrawingSet.billboardGui, DrawingSet.textLabel = self:CreateLabelObjects(ContainerModel)
+	for SegmentIndex = 1, self.maxTrajectoryLineCount do
+		DrawingSet.trajectoryParts[SegmentIndex] = self:CreateSegmentPart(ContainerModel)
 	end
-	for LineIndex = 1, self.maxAoeLineCount do
-		DrawingSet.aoeLines[LineIndex] = self:CreateLine(1.25)
+	for SegmentIndex = 1, self.maxAoeLineCount do
+		DrawingSet.aoeParts[SegmentIndex] = self:CreateSegmentPart(ContainerModel)
 	end
 	self.trackedByModel[GrenadeModel] = DrawingSet
 	return DrawingSet
@@ -8821,35 +8870,28 @@ JailbirdGrenadeEspRuntimeTable.HideDrawingSet = function(self, DrawingSet)
 	if not DrawingSet then
 		return
 	end
-	for _, LineObject in ipairs(DrawingSet.trajectoryLines or {}) do
-		LineObject.Visible = false
+	for _, SegmentPart in ipairs(DrawingSet.trajectoryParts or {}) do
+		SegmentPart.Transparency = 1
 	end
-	for _, LineObject in ipairs(DrawingSet.aoeLines or {}) do
-		LineObject.Visible = false
+	for _, SegmentPart in ipairs(DrawingSet.aoeParts or {}) do
+		SegmentPart.Transparency = 1
 	end
-	if DrawingSet.infoText then
-		DrawingSet.infoText.Visible = false
+	if DrawingSet.billboardGui then
+		DrawingSet.billboardGui.Enabled = false
 	end
 end
 
 JailbirdGrenadeEspRuntimeTable.RemoveGrenadeDrawings = function(self, GrenadeModel)
 	local DrawingSet = self.trackedByModel[GrenadeModel]
-	if not DrawingSet then
-		return
+	if DrawingSet and DrawingSet.container then
+		pcall(DrawingSet.container.Destroy, DrawingSet.container)
 	end
-	for _, LineObject in ipairs(DrawingSet.trajectoryLines or {}) do
-		self:RemoveDrawingObject(LineObject)
-	end
-	for _, LineObject in ipairs(DrawingSet.aoeLines or {}) do
-		self:RemoveDrawingObject(LineObject)
-	end
-	self:RemoveDrawingObject(DrawingSet.infoText)
 	self.trackedByModel[GrenadeModel] = nil
 end
 
 JailbirdGrenadeEspRuntimeTable.HideAll = function(self)
-	for _, DrawingSet in pairs(self.trackedByModel) do
-		self:HideDrawingSet(DrawingSet)
+	for GrenadeModel in pairs(self.trackedByModel) do
+		self:RemoveGrenadeDrawings(GrenadeModel)
 	end
 end
 
@@ -9102,83 +9144,36 @@ JailbirdGrenadeEspRuntimeTable.EstimateSelfDamage = function(self, GrenadeModel,
 	return math.max(0, EstimatedDamageNumber), true, DistanceNumber, OuterRangeNumber
 end
 
-JailbirdGrenadeEspRuntimeTable.ProjectWorldPoint = function(self, WorldPointVector3)
-	local ScreenPointVector3, OnScreenBoolean = Camera.WorldToViewportPoint(Camera, WorldPointVector3)
-	if ScreenPointVector3.Z <= 0 then
-		return nil, false
-	end
-	return Vector2.new(ScreenPointVector3.X, ScreenPointVector3.Y), OnScreenBoolean
-end
-
 JailbirdGrenadeEspRuntimeTable.DrawAoeRing = function(self, DrawingSet, CenterPositionVector3, RadiusNumber, Color3Value)
-	local CenterScreenVector3, CenterOnScreenBoolean = Camera.WorldToViewportPoint(Camera, CenterPositionVector3)
-	if CenterScreenVector3.Z <= 0 then
-		for _, LineObject in ipairs(DrawingSet.aoeLines or {}) do
-			LineObject.Visible = false
-		end
-		return false, nil
-	end
-
-	local CenterVector2 = Vector2.new(CenterScreenVector3.X, CenterScreenVector3.Y)
-	local AnyVisibleBoolean = CenterOnScreenBoolean
 	local SegmentCountNumber = self.maxAoeLineCount
-	local PreviousPointVector2 = nil
-	local FirstPointVector2 = nil
-	local PreviousVisibleBoolean = false
-	local FirstVisibleBoolean = false
+	local PreviousWorldPointVector3 = nil
+	local FirstWorldPointVector3 = nil
 	for LineIndex = 1, SegmentCountNumber do
 		local AngleNumber = ((LineIndex - 1) / SegmentCountNumber) * math.pi * 2
 		local WorldPointVector3 = CenterPositionVector3 + Vector3.new(math.cos(AngleNumber) * RadiusNumber, 0, math.sin(AngleNumber) * RadiusNumber)
-		local ScreenPointVector2, VisibleBoolean = self:ProjectWorldPoint(WorldPointVector3)
 		if LineIndex == 1 then
-			FirstPointVector2 = ScreenPointVector2
-			FirstVisibleBoolean = VisibleBoolean
+			FirstWorldPointVector3 = WorldPointVector3
 		end
-		if PreviousPointVector2 and ScreenPointVector2 then
-			local LineObject = DrawingSet.aoeLines[LineIndex - 1]
-			LineObject.From = PreviousPointVector2
-			LineObject.To = ScreenPointVector2
-			LineObject.Color = Color3Value
-			LineObject.Visible = PreviousVisibleBoolean or VisibleBoolean
-			AnyVisibleBoolean = AnyVisibleBoolean or LineObject.Visible
-		elseif DrawingSet.aoeLines[LineIndex - 1] then
-			DrawingSet.aoeLines[LineIndex - 1].Visible = false
+		if PreviousWorldPointVector3 then
+			self:SetSegmentPart(DrawingSet.aoeParts[LineIndex - 1], PreviousWorldPointVector3, WorldPointVector3, Color3Value, 0.08)
 		end
-		PreviousPointVector2 = ScreenPointVector2
-		PreviousVisibleBoolean = VisibleBoolean
+		PreviousWorldPointVector3 = WorldPointVector3
 	end
 
-	local ClosingLineObject = DrawingSet.aoeLines[SegmentCountNumber]
-	if PreviousPointVector2 and FirstPointVector2 then
-		ClosingLineObject.From = PreviousPointVector2
-		ClosingLineObject.To = FirstPointVector2
-		ClosingLineObject.Color = Color3Value
-		ClosingLineObject.Visible = PreviousVisibleBoolean or FirstVisibleBoolean
-		AnyVisibleBoolean = AnyVisibleBoolean or ClosingLineObject.Visible
-	else
-		ClosingLineObject.Visible = false
+	if PreviousWorldPointVector3 and FirstWorldPointVector3 then
+		self:SetSegmentPart(DrawingSet.aoeParts[SegmentCountNumber], PreviousWorldPointVector3, FirstWorldPointVector3, Color3Value, 0.08)
 	end
-	return AnyVisibleBoolean, CenterVector2
 end
 
 JailbirdGrenadeEspRuntimeTable.DrawTrajectory = function(self, DrawingSet, PointsTable, Color3Value)
 	for LineIndex = 1, self.maxTrajectoryLineCount do
-		local LineObject = DrawingSet.trajectoryLines[LineIndex]
+		local SegmentPart = DrawingSet.trajectoryParts[LineIndex]
 		local StartPointVector3 = PointsTable[LineIndex]
 		local EndPointVector3 = PointsTable[LineIndex + 1]
 		if StartPointVector3 and EndPointVector3 then
-			local StartScreenVector3, StartOnScreenBoolean = Camera.WorldToViewportPoint(Camera, StartPointVector3)
-			local EndScreenVector3, EndOnScreenBoolean = Camera.WorldToViewportPoint(Camera, EndPointVector3)
-			if StartScreenVector3.Z > 0 and EndScreenVector3.Z > 0 and (StartOnScreenBoolean or EndOnScreenBoolean) then
-				LineObject.From = Vector2.new(StartScreenVector3.X, StartScreenVector3.Y)
-				LineObject.To = Vector2.new(EndScreenVector3.X, EndScreenVector3.Y)
-				LineObject.Color = Color3Value
-				LineObject.Visible = true
-			else
-				LineObject.Visible = false
-			end
+			self:SetSegmentPart(SegmentPart, StartPointVector3, EndPointVector3, Color3Value, 0.06)
 		else
-			LineObject.Visible = false
+			SegmentPart.Transparency = 1
 		end
 	end
 end
@@ -9220,18 +9215,11 @@ JailbirdGrenadeEspRuntimeTable.UpdateGrenade = function(self, GrenadeModel, Loca
 	local DangerColor3 = CanDamageBoolean and DamageNumber > 0 and Color3.fromRGB(255, 75, 55) or Color3.fromRGB(255, 190, 90)
 
 	self:DrawTrajectory(DrawingSet, PointsTable, DangerColor3)
-	local AoeVisibleBoolean, CenterVector2 = self:DrawAoeRing(DrawingSet, ExplosionPositionVector3, RadiusNumber, DangerColor3)
-	local AnchorScreenVector3, AnchorOnScreenBoolean = Camera.WorldToViewportPoint(Camera, BasePart.Position)
-	local TextPositionVector2 = nil
-	if AnchorScreenVector3.Z > 0 and AnchorOnScreenBoolean then
-		TextPositionVector2 = Vector2.new(AnchorScreenVector3.X, AnchorScreenVector3.Y - 20)
-	elseif AoeVisibleBoolean and CenterVector2 then
-		TextPositionVector2 = CenterVector2 + Vector2.new(0, -18)
-	end
-
-	if TextPositionVector2 then
+	self:DrawAoeRing(DrawingSet, ExplosionPositionVector3, RadiusNumber, DangerColor3)
+	if DrawingSet.labelAnchor and DrawingSet.billboardGui and DrawingSet.textLabel then
 		local FuseTextString = type(FuseRemainingNumber) == "number" and (string.format("%.1fs", FuseRemainingNumber)) or "?s"
-		DrawingSet.infoText.Text = GrenadeModel.Name
+		DrawingSet.labelAnchor.CFrame = CFrame.new(BasePart.Position + Vector3.new(0, 2, 0))
+		DrawingSet.textLabel.Text = GrenadeModel.Name
 			.. " | "
 			.. FuseTextString
 			.. " | "
@@ -9239,11 +9227,8 @@ JailbirdGrenadeEspRuntimeTable.UpdateGrenade = function(self, GrenadeModel, Loca
 			.. " dmg | "
 			.. tostring(math.floor(DistanceNumber + 0.5))
 			.. " studs"
-		DrawingSet.infoText.Position = TextPositionVector2
-		DrawingSet.infoText.Color = DangerColor3
-		DrawingSet.infoText.Visible = true
-	else
-		DrawingSet.infoText.Visible = false
+		DrawingSet.textLabel.TextColor3 = DangerColor3
+		DrawingSet.billboardGui.Enabled = true
 	end
 	DrawingSet.lastSeenFrame = CurrentFrameSequenceNumber
 end
