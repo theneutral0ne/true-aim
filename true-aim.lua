@@ -149,6 +149,11 @@ LostFrontTeamRuntimeTable = {
 	deployedConnection = nil,
 	diedConnection = nil,
 }
+LostFrontCameraRuntimeTable = {
+	aimLookVector = nil,
+	active = false,
+	lastTargetPart = nil,
+}
 
 
 local GameIntegrationProfilesByPlaceIdTable = {
@@ -566,6 +571,8 @@ local ShieldModeRuntimeTable: { [string]: any } = {
 	currentWeaponBallisticsProfileCharacter = nil,
 	currentWeaponBallisticsProfileLocalGun = nil,
 	currentWeaponBallisticsProfileValue = nil,
+	lostFrontFastCastHookApplied = false,
+	lostFrontFastCastHookAttemptTime = 0,
 	heldItemStateCacheDuration = 0.2,
 	GetBloodZoneHeldItemState = nil,
 }
@@ -9611,6 +9618,7 @@ end
 
 function ShieldModeRuntimeTable.GetLostFrontRaycastRedirect(OriginVector3, DirectionVector3)
 	if not IsLostFrontPlaceBoolean
+		or ShieldModeRuntimeTable.lostFrontFastCastHookApplied
 		or typeof(OriginVector3) ~= "Vector3"
 		or typeof(DirectionVector3) ~= "Vector3"
 		or DirectionVector3.Magnitude <= 0.001 then
@@ -9628,39 +9636,152 @@ function ShieldModeRuntimeTable.GetLostFrontRaycastRedirect(OriginVector3, Direc
 		return nil
 	end
 
-	return RedirectVector3.Unit * DirectionVector3.Magnitude
+	return RedirectVector3
 end
 
-function ShieldModeRuntimeTable.ApplyLostFrontCameraAim()
+function ShieldModeRuntimeTable.EnsureLostFrontFastCastHook()
 	if not IsLostFrontPlaceBoolean
-		or not IsEffectiveCameraMethodEnabled()
-		or not CurrentTargetPartInstance
-		or not CurrentTargetCharacterModel
-		or not CurrentTargetPartInstance.Parent
-		or not IsCharacterAlive(CurrentTargetCharacterModel) then
+		or ShieldModeRuntimeTable.lostFrontFastCastHookApplied
+		or type(getgc) ~= "function"
+		or type(hookfunction) ~= "function" then
 		return
 	end
 
-	if AimbotRequireRmbBoolean and not ShieldModeRuntimeTable.IsLockKeyHeld() then
+	local NowNumber = tick()
+	if (NowNumber - ShieldModeRuntimeTable.lostFrontFastCastHookAttemptTime) < 2 then
+		return
+	end
+	ShieldModeRuntimeTable.lostFrontFastCastHookAttemptTime = NowNumber
+
+	local GetGarbageSuccessBoolean, GarbageObjectsTable = pcall(getgc, true)
+	if not GetGarbageSuccessBoolean or type(GarbageObjectsTable) ~= "table" then
 		return
 	end
 
+	for _, FastCastTable in pairs(GarbageObjectsTable) do
+		if type(FastCastTable) ~= "table" or FastCastTable.__type ~= "FastCast" then
+			continue
+		end
+
+		local FireFunction = FastCastTable.Fire
+		if type(FireFunction) ~= "function" then
+			continue
+		end
+
+		local OriginalFireFunction
+		local HookSuccessBoolean, HookedOriginalFunction = pcall(function()
+			return hookfunction(FireFunction, function(Caster, ...)
+				local Args = { ... }
+				if IsEffectiveHookMethodEnabled() then
+					local OriginVector3 = Args[1]
+					local DirectionVector3 = Args[2]
+					local SpeedOrVelocityValue = Args[3]
+					local LocalCharacterModel = CurrentFrameLocalCharacterModel
+					if not CurrentFrameLocalCharacterReadyBoolean then
+						LocalCharacterModel = ResolveCharacterModelForPlayer(LocalPlayer)
+					end
+
+					if typeof(OriginVector3) == "Vector3"
+						and typeof(DirectionVector3) == "Vector3"
+						and ShieldModeRuntimeTable.ShouldRedirectTowardCurrentTarget(LocalCharacterModel) then
+						local TargetPositionVector3 = GetCurrentTrackedTargetPointVector3()
+							or (CurrentTargetPartInstance and CurrentTargetPartInstance.Parent and CurrentTargetPartInstance.Position)
+						local RedirectVector3 = typeof(TargetPositionVector3) == "Vector3"
+							and TargetPositionVector3 - OriginVector3
+							or nil
+						if RedirectVector3 and RedirectVector3.Magnitude > 0.001 then
+							local RedirectUnitVector3 = RedirectVector3.Unit
+							Args[2] = RedirectUnitVector3
+							if typeof(SpeedOrVelocityValue) == "Vector3" then
+								Args[3] = RedirectUnitVector3 * SpeedOrVelocityValue.Magnitude
+							end
+						end
+					end
+				end
+
+				return OriginalFireFunction(Caster, unpack(Args))
+			end)
+		end)
+		if HookSuccessBoolean and type(HookedOriginalFunction) == "function" then
+			OriginalFireFunction = HookedOriginalFunction
+			ShieldModeRuntimeTable.lostFrontFastCastHookApplied = true
+			return
+		end
+	end
+end
+
+function ShieldModeRuntimeTable.ApplyLostFrontCameraAim(DeltaTimeNumber)
+	local CameraRuntimeTable = LostFrontCameraRuntimeTable
 	local ActiveCamera = WorkspaceService.CurrentCamera or Camera
-	local TargetPositionVector3 = GetCurrentEffectiveAimPointVector3()
-	if not ActiveCamera or typeof(TargetPositionVector3) ~= "Vector3" then
+	if not IsLostFrontPlaceBoolean or not ActiveCamera or not IsEffectiveCameraMethodEnabled() then
+		CameraRuntimeTable.active = false
+		CameraRuntimeTable.aimLookVector = nil
+		CameraRuntimeTable.lastTargetPart = nil
 		return
+	end
+
+	local LockKeyHeldBoolean = ShieldModeRuntimeTable.IsLockKeyHeld()
+	if AimbotRequireRmbBoolean and not LockKeyHeldBoolean then
+		CameraRuntimeTable.active = false
+		CameraRuntimeTable.aimLookVector = nil
+		CameraRuntimeTable.lastTargetPart = nil
+		return
+	end
+
+	local TargetPositionVector3 = nil
+	if CurrentTargetPartInstance
+		and CurrentTargetCharacterModel
+		and CurrentTargetPartInstance.Parent
+		and IsCharacterAlive(CurrentTargetCharacterModel) then
+		TargetPositionVector3 = GetCurrentTrackedTargetPointVector3()
+			or CurrentTargetPartInstance.Position
 	end
 
 	local CameraPositionVector3 = ActiveCamera.CFrame.Position
+	if typeof(TargetPositionVector3) ~= "Vector3" then
+		if CameraRuntimeTable.active
+			and AimbotRequireRmbBoolean
+			and LockKeyHeldBoolean
+			and typeof(CameraRuntimeTable.aimLookVector) == "Vector3" then
+			ActiveCamera.CFrame = CFrame.new(
+				CameraPositionVector3,
+				CameraPositionVector3 + CameraRuntimeTable.aimLookVector
+			)
+			Camera = ActiveCamera
+			return
+		end
+
+		CameraRuntimeTable.active = false
+		CameraRuntimeTable.aimLookVector = nil
+		CameraRuntimeTable.lastTargetPart = nil
+		return
+	end
+
 	local DirectionVector3 = TargetPositionVector3 - CameraPositionVector3
 	if DirectionVector3.Magnitude <= 0.001 then
 		return
 	end
 
+	local CurrentLookVector = CameraRuntimeTable.aimLookVector
+	if not CameraRuntimeTable.active or typeof(CurrentLookVector) ~= "Vector3" then
+		CurrentLookVector = ActiveCamera.CFrame.LookVector
+	end
+
+	local SmoothingNumber = math.clamp(tonumber(AimbotSmoothingNumber) or 1, 0.01, 1)
+	local FrameAlphaNumber = SmoothingNumber
+	if type(DeltaTimeNumber) == "number" and DeltaTimeNumber > 0 then
+		FrameAlphaNumber = 1 - ((1 - SmoothingNumber) ^ math.clamp(DeltaTimeNumber * 60, 0.25, 4))
+	end
+	local SmoothedLookVector = CurrentLookVector:Lerp(DirectionVector3.Unit, FrameAlphaNumber)
+	if SmoothedLookVector.Magnitude <= 0.001 then
+		return
+	end
+
+	CameraRuntimeTable.aimLookVector = SmoothedLookVector.Unit
+	CameraRuntimeTable.active = true
+	CameraRuntimeTable.lastTargetPart = CurrentTargetPartInstance
 	Camera = ActiveCamera
-	local CurrentLookVector = ActiveCamera.CFrame.LookVector
-	local SmoothedLookVector = CurrentLookVector:Lerp(DirectionVector3.Unit, AimbotSmoothingNumber)
-	ActiveCamera.CFrame = CFrame.new(CameraPositionVector3, CameraPositionVector3 + SmoothedLookVector)
+	ActiveCamera.CFrame = CFrame.new(CameraPositionVector3, CameraPositionVector3 + CameraRuntimeTable.aimLookVector)
 end
 
 function ShieldModeRuntimeTable.GetFireGunMuzzleRedirect(ActiveFiringLocalGunTable, TargetPositionVector3, FallbackOriginVector3, DirectionMagnitudeNumber)
@@ -9854,6 +9975,9 @@ RunService.BindToRenderStep(RunService, "TrueAimMainLoop", MainLoopRenderPriorit
 	CurrentFrameSequenceNumber = CurrentFrameSequenceNumber + 1
 	local FrameNowNumber = tick()
 	Camera = WorkspaceService.CurrentCamera or Camera
+	if IsLostFrontPlaceBoolean then
+		ShieldModeRuntimeTable.EnsureLostFrontFastCastHook()
+	end
 	local MouseLocationVector2 = UserInputService.GetMouseLocation(UserInputService)
 	local MouseOverPartInstance = MouseObject.Target
 	FrameTargetDataCacheTable.normal = ClearMutableTable(FrameTargetDataCacheTable.normal)
@@ -10288,9 +10412,7 @@ RunService.BindToRenderStep(RunService, "TrueAimMainLoop", MainLoopRenderPriorit
 			ShouldAimbotBoolean = ShieldModeRuntimeTable.IsLockKeyHeld()
 		end
 
-		if ShouldAimbotBoolean and IsEffectiveCameraMethodEnabled() and IsLostFrontPlaceBoolean then
-			ShieldModeRuntimeTable.ApplyLostFrontCameraAim()
-		elseif ShouldAimbotBoolean and IsEffectiveCameraMethodEnabled() then
+		if ShouldAimbotBoolean and IsEffectiveCameraMethodEnabled() and not IsLostFrontPlaceBoolean then
 			local ActiveCamera = WorkspaceService.CurrentCamera or Camera
 			if ActiveCamera then
 				Camera = ActiveCamera
@@ -10357,3 +10479,15 @@ RunService.BindToRenderStep(RunService, "TrueAimMainLoop", MainLoopRenderPriorit
 		RenderAimbotEspOverlays(LocalCharacterModel, TeamCheckEnabledBoolean, LocalTeamObject)
 	end
 end)
+
+if IsLostFrontPlaceBoolean then
+	pcall(RunService.UnbindFromRenderStep, RunService, "TrueAimLostFrontCamera")
+	RunService.BindToRenderStep(
+		RunService,
+		"TrueAimLostFrontCamera",
+		Enum.RenderPriority.Last.Value,
+		function(DeltaTimeNumber)
+			ShieldModeRuntimeTable.ApplyLostFrontCameraAim(DeltaTimeNumber)
+		end
+	)
+end
