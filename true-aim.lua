@@ -10084,7 +10084,8 @@ ShieldModeRuntimeTable.oldNamecall = hookmetamethod(game, "__namecall", function
 	return ShieldModeRuntimeTable.oldNamecall(Self, unpack(Args))
 end)
 
-RunService.RenderStepped.Connect(RunService.RenderStepped, function()
+pcall(RunService.UnbindFromRenderStep, RunService, "TrueAimMainLoop")
+RunService.BindToRenderStep(RunService, "TrueAimMainLoop", Enum.RenderPriority.Camera.Value + 1, function()
 	CurrentFrameSequenceNumber = (tonumber(CurrentFrameSequenceNumber) or 0) + 1
 	local FrameNowNumber = tick()
 	local MouseLocationVector2 = UserInputService.GetMouseLocation(UserInputService)
