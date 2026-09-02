@@ -9,7 +9,7 @@ local TweenService = game.GetService(game, "TweenService")
 local VirtualInputManager = game.GetService(game, "VirtualInputManager")
 local HttpService = game.GetService(game, "HttpService")
 
-TrueAimScriptVersionString = "1.0.0"
+TrueAimScriptVersionString = "1.0.1"
 print("[True Aim] Script version " .. TrueAimScriptVersionString)
 
 local LocalPlayer = Players.LocalPlayer
@@ -156,6 +156,10 @@ LostFrontCameraRuntimeTable = {
 	aimLookVector = nil,
 	active = false,
 	lastTargetPart = nil,
+	scriptable = false,
+	cameraInstance = nil,
+	cameraType = nil,
+	cameraSubject = nil,
 }
 
 
@@ -179,6 +183,7 @@ local GameIntegrationProfilesByPlaceIdTable = {
 		usesCustomTeam = true,
 		visibilityIgnoreWorkspaceFolder = true,
 		cameraRenderPriority = Enum.RenderPriority.Last.Value,
+		hookIgnoresFov = true,
 	},
 }
 CurrentGameIntegrationProfileTable = GameIntegrationProfilesByPlaceIdTable[game.PlaceId]
@@ -1543,7 +1548,12 @@ local function ShouldApplyNormalHookHitChance()
 end
 
 local function ShouldIgnoreFovChecks(IgnoreFovBoolean)
-	return IgnoreFovBoolean or IsSillyModeBehaviorActive()
+	return IgnoreFovBoolean
+		or IsSillyModeBehaviorActive()
+		or (CurrentGameIntegrationProfileTable
+			and CurrentGameIntegrationProfileTable.hookIgnoresFov == true
+			and IsEffectiveHookMethodEnabled()
+			and not IsEffectiveCameraMethodEnabled())
 end
 
 local function ShouldIgnoreOffscreenChecks()
@@ -9713,21 +9723,37 @@ function ShieldModeRuntimeTable.EnsureLostFrontFastCastHook()
 	end
 end
 
+function ShieldModeRuntimeTable.ResetLostFrontCameraAim()
+	local CameraRuntimeTable = LostFrontCameraRuntimeTable
+	local CameraToRestore = CameraRuntimeTable.cameraInstance
+	if CameraRuntimeTable.scriptable and CameraToRestore then
+		if CameraRuntimeTable.cameraSubject then
+			CameraToRestore.CameraSubject = CameraRuntimeTable.cameraSubject
+		end
+		if CameraRuntimeTable.cameraType then
+			CameraToRestore.CameraType = CameraRuntimeTable.cameraType
+		end
+	end
+	CameraRuntimeTable.active = false
+	CameraRuntimeTable.aimLookVector = nil
+	CameraRuntimeTable.lastTargetPart = nil
+	CameraRuntimeTable.scriptable = false
+	CameraRuntimeTable.cameraInstance = nil
+	CameraRuntimeTable.cameraType = nil
+	CameraRuntimeTable.cameraSubject = nil
+end
+
 function ShieldModeRuntimeTable.ApplyLostFrontCameraAim(DeltaTimeNumber)
 	local CameraRuntimeTable = LostFrontCameraRuntimeTable
 	local ActiveCamera = WorkspaceService.CurrentCamera or Camera
 	if not IsLostFrontPlaceBoolean or not ActiveCamera or not IsEffectiveCameraMethodEnabled() then
-		CameraRuntimeTable.active = false
-		CameraRuntimeTable.aimLookVector = nil
-		CameraRuntimeTable.lastTargetPart = nil
+		ShieldModeRuntimeTable.ResetLostFrontCameraAim()
 		return
 	end
 
 	local LockKeyHeldBoolean = ShieldModeRuntimeTable.IsLockKeyHeld()
 	if AimbotRequireRmbBoolean and not LockKeyHeldBoolean then
-		CameraRuntimeTable.active = false
-		CameraRuntimeTable.aimLookVector = nil
-		CameraRuntimeTable.lastTargetPart = nil
+		ShieldModeRuntimeTable.ResetLostFrontCameraAim()
 		return
 	end
 
@@ -9743,8 +9769,7 @@ function ShieldModeRuntimeTable.ApplyLostFrontCameraAim(DeltaTimeNumber)
 	local CameraPositionVector3 = ActiveCamera.CFrame.Position
 	if typeof(TargetPositionVector3) ~= "Vector3" then
 		if CameraRuntimeTable.active
-			and AimbotRequireRmbBoolean
-			and LockKeyHeldBoolean
+			and (not AimbotRequireRmbBoolean or LockKeyHeldBoolean)
 			and typeof(CameraRuntimeTable.aimLookVector) == "Vector3" then
 			ActiveCamera.CFrame = CFrame.new(
 				CameraPositionVector3,
@@ -9754,9 +9779,7 @@ function ShieldModeRuntimeTable.ApplyLostFrontCameraAim(DeltaTimeNumber)
 			return
 		end
 
-		CameraRuntimeTable.active = false
-		CameraRuntimeTable.aimLookVector = nil
-		CameraRuntimeTable.lastTargetPart = nil
+		ShieldModeRuntimeTable.ResetLostFrontCameraAim()
 		return
 	end
 
@@ -9783,6 +9806,13 @@ function ShieldModeRuntimeTable.ApplyLostFrontCameraAim(DeltaTimeNumber)
 	CameraRuntimeTable.aimLookVector = SmoothedLookVector.Unit
 	CameraRuntimeTable.active = true
 	CameraRuntimeTable.lastTargetPart = CurrentTargetPartInstance
+	if not CameraRuntimeTable.scriptable then
+		CameraRuntimeTable.cameraInstance = ActiveCamera
+		CameraRuntimeTable.cameraType = ActiveCamera.CameraType
+		CameraRuntimeTable.cameraSubject = ActiveCamera.CameraSubject
+		CameraRuntimeTable.scriptable = true
+		ActiveCamera.CameraType = Enum.CameraType.Scriptable
+	end
 	Camera = ActiveCamera
 	ActiveCamera.CFrame = CFrame.new(CameraPositionVector3, CameraPositionVector3 + CameraRuntimeTable.aimLookVector)
 end
