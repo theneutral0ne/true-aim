@@ -9,7 +9,7 @@ local TweenService = game.GetService(game, "TweenService")
 local VirtualInputManager = game.GetService(game, "VirtualInputManager")
 local HttpService = game.GetService(game, "HttpService")
 
-TrueAimScriptVersionString = "1.0.4"
+TrueAimScriptVersionString = "1.0.5"
 print("[True Aim] Script version " .. TrueAimScriptVersionString)
 
 local LocalPlayer = Players.LocalPlayer
@@ -9765,12 +9765,11 @@ function ShieldModeRuntimeTable.ApplyLostFrontCameraAim(DeltaTimeNumber)
 	local LostFrontCursorGuiInstance = PlayerGuiInstance and PlayerGuiInstance.FindFirstChild(PlayerGuiInstance, "cursor") or nil
 	local LostFrontCursorFrameInstance = LostFrontCursorGuiInstance
 		and LostFrontCursorGuiInstance.FindFirstChild(LostFrontCursorGuiInstance, "Frame") or nil
-	if LostFrontCursorFrameInstance
-		and LostFrontCursorFrameInstance.Visible
-		and LostFrontCursorFrameInstance.AbsoluteSize.X > 0
-		and LostFrontCursorFrameInstance.AbsoluteSize.Y > 0 then
-		AimReferenceLocationVector2 = LostFrontCursorFrameInstance.AbsolutePosition
-			+ (LostFrontCursorFrameInstance.AbsoluteSize * 0.5)
+	if LostFrontCursorFrameInstance and LostFrontCursorFrameInstance.Visible then
+		AimReferenceLocationVector2 = Vector2.new(
+			LostFrontCursorFrameInstance.Position.X.Offset,
+			LostFrontCursorFrameInstance.Position.Y.Offset
+		)
 	end
 	local TargetOffsetVector2 = Vector2.new(
 		TargetViewportPositionVector3.X - AimReferenceLocationVector2.X,
