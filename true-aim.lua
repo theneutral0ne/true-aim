@@ -1409,10 +1409,7 @@ local function IsHumanoidCharacterModel(CharacterModel)
 end
 
 local function GetCharactersFolder()
-	local CharactersFolder = WorkspaceService.Characters
-	if not CharactersFolder then
-		CharactersFolder = WorkspaceService.FindFirstChild(WorkspaceService, "Characters")
-	end
+	local CharactersFolder = WorkspaceService.FindFirstChild(WorkspaceService, "Characters")
 	if CharactersFolder and (CharactersFolder.ClassName == "Model" or CharactersFolder.ClassName == "Folder") then
 		return CharactersFolder
 	end
